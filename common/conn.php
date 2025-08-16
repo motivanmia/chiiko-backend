@@ -1,5 +1,6 @@
 <?php
   require_once __DIR__ . '/config.php';
+  require_once __DIR__ . '/functions.php';
 
   try {
     $mysqli = new mysqli(
@@ -10,20 +11,15 @@
       DB_PORT
     );
 
+    // 設定連線編碼與時區
     $mysqli->query('SET NAMES UTF8');
     $mysqli->query('SET time_zone = "+8:00"');
-
-    echo '<h1 style="color: green;">連線成功。</h1>';
-    echo "<hr>";
-    echo '主機資訊：' . $mysqli->host_info;
-    echo '<br>';
-    echo 'MySQL 版本資訊：' . $mysqli->server_info;
-    
   } catch (mysqli_sql_exception $e) {
-    echo '<h1 style="color: red;">連線失敗。</h1>';
-    echo "<hr>";
-    echo '錯誤代碼：' . $e->getCode() . '<br>';
-    echo '錯誤訊息：' . $e->getMessage() . '<br>';
-    exit();
+    send_json([
+        'status' => 'fail',
+        'message' => '資料庫連線失敗',
+        'error_code' => $e->getCode(),
+        'error_msg' => $e->getMessage()
+    ], 500);
   }
 ?>
