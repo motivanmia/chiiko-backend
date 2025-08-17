@@ -7,7 +7,16 @@
 
   // 取得哪個使用者
   $user_id = get_int_param('user_id');
-  $where = $user_id ? "WHERE c.user_id = {$user_id}" : "";
+
+  // 如果沒有 user_id，就直接回傳錯誤
+  if (!$user_id) {
+    send_json([
+      'status' => 'fail',
+      'message' => '請提供 user_id'
+    ], 400);
+  }
+
+  $where = "WHERE c.user_id = {$user_id}";
 
   // SQL 查詢
   $sql = "SELECT 
