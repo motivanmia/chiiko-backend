@@ -3,7 +3,7 @@
 function send_json($data, $status_code = 200) {
     // 判斷是否完整網址
     $is_absolute = function ($val) {
-        return is_string($val) && preg_match('#^(https?:)?//#i', $val) || str_starts_with($val, 'data:');
+        // return is_string($val) && preg_match('#^(https?:)?//#i', $val) || str_starts_with($val, 'data:');
     };
 
     // 加上 IMG_BASE_URL
