@@ -12,7 +12,7 @@ $payload = [
   "ingredients_categary_id" => 1,
   "name"                    => "空心菜",
   // 單張或多張都可以，這裡示範多張
-  "image"                   => ["waterspinach.png", "waterspinash-ng.png"],
+  "image"                   => ["waterspinach.png", "waterspinach-ng.png"],
   "status"                  => "0",
   "storage_method"          => "- 整株空心菜可放置於 5～10°C 的冷藏環境，建議使用報紙或廚房紙巾包裹後裝袋，避免水氣。\n- 暫不使用時，根部朝下立放可減緩失水。\n- 最佳賞味期 2 日內。",
   "content"                 => [
