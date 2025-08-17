@@ -1,1 +1,4 @@
 /common/config.php
+
+.env
+.env.production
