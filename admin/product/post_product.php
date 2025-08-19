@@ -14,7 +14,7 @@
    */
   function handleFileUpload($file_info, $is_multiple = false){
     // 確保資料夾存在且可寫入
-    $upload_dir = './uploads/';
+    $upload_dir = '../../uploads/';
     if(!is_dir($upload_dir)){
       mkdir($upload_dir,0755,true);
     }
@@ -41,7 +41,7 @@
       $target_path = $upload_dir . $new_filename;
 
       if(move_uploaded_file($file_info['tmp_name'],$target_path)){
-        return './uploads/' . $new_filename;
+        return '../../uploads/' . $new_filename;
       }
       return null;
     }else{
@@ -63,7 +63,7 @@
         $target_path = $upload_dir . $new_filename;
 
         if(move_uploaded_file($file_info['tmp_name'][$i],$target_path)){
-          $save_paths[] = './uploads/' . $new_filename;
+          $save_paths[] = '../../uploads/' . $new_filename;
         }
       }
       return $save_paths;
