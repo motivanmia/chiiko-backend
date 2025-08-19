@@ -13,7 +13,7 @@
   $sql = "SELECT 
       user_id,
       name, 
-      nikname,
+      nickname,
       phone,
       account,
       address,
