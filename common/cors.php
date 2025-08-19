@@ -12,4 +12,7 @@
   header("Access-Control-Allow-Origin: *");
   
   header("Access-Control-Allow-Methods: GET, POST, PATCH, PUT, DELETE, OPTIONS");
+
+  header("Access-Control-Allow-Headers: Content-Type");
+  // 允許前端傳送 Content-Type 標頭，以解決 CORS 預檢請求錯誤
 ?>
