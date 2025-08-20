@@ -25,7 +25,7 @@ try {
   };
 
   // 讀欄位（※名稱要和前端一致）
-  $ingredients_categary_id = (int)($payload['ingredients_categary_id'] ?? 0);
+  $ingredients_category_id = (int)($payload['ingredients_category_id'] ?? 0);
   $name                    = (string)($payload['name'] ?? '');
   $image_json              = $toJson($payload['image'] ?? []);
   $status                  = (string)($payload['status'] ?? '0');
@@ -33,16 +33,16 @@ try {
   $content_json            = $toJson($payload['content'] ?? []);
 
   // 最基本的驗證
-  if ($ingredients_categary_id <= 0) throw new Exception('ingredients_categary_id 無效');
+  if ($ingredients_category_id <= 0) throw new Exception('ingredients_category_id 無效');
   if ($name === '') throw new Exception('name 必填');
 
   // INSERT（用反引號避免欄位名踩雷）
   $sql = "INSERT INTO `ingredients`
-          (`ingredients_categary_id`, `name`, `image`, `status`, `storage_method`, `content`)
+          (`ingredients_category_id`, `name`, `image`, `status`, `storage_method`, `content`)
           VALUES (?, ?, ?, ?, ?, ?)";
   $stmt = $mysqli->prepare($sql);
   $stmt->bind_param("isssss",
-    $ingredients_categary_id, $name, $image_json, $status, $storage_method, $content_json
+    $ingredients_category_id, $name, $image_json, $status, $storage_method, $content_json
   );
   $stmt->execute();
   $new_id = $stmt->insert_id;

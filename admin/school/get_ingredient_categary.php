@@ -8,7 +8,7 @@
   // echo (DB_PORT);
   require_method('GET');
   
-  $sql = "SELECT * FROM ingredient_categary";
+  $sql = "SELECT * FROM ingredient_category";
 
   // 取得資料
   $result = db_query($mysqli, $sql);

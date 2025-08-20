@@ -33,10 +33,10 @@ try {
   $types  = '';
   $params = [];
 
-  if (array_key_exists('ingredients_categary_id', $payload)) {
-    $fields[] = '`ingredients_categary_id` = ?';
+  if (array_key_exists('ingredients_category_id', $payload)) {
+    $fields[] = '`ingredients_category_id` = ?';
     $types   .= 'i';
-    $params[] = (int)$payload['ingredients_categary_id'];
+    $params[] = (int)$payload['ingredients_category_id'];
   }
   if (array_key_exists('name', $payload)) {
     $fields[] = '`name` = ?';
