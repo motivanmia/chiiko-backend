@@ -1,33 +1,24 @@
 <?php
+  require_once __DIR__ . '/../../common/config.php';
   require_once __DIR__ . '/../../common/conn.php';
   require_once __DIR__ . '/../../common/cors.php';
   require_once __DIR__ . '/../../common/functions.php';
 
-  // 只允許使用 GET
+  // echo (IMG_BASE_URL);
+  // echo (DB_PORT);
   require_method('GET');
-
-  // 取得哪個使用者
-  $user_id = get_int_param('user_id');
-
-  // SQL 查詢
-  $sql = "SELECT 
-      user_id,
-      name, 
-      nickname,
-      phone,
-      account,
-      address,
-      image
-      FROM users";
+  
+  $sql = "SELECT * FROM ingredient_category";
 
   // 取得資料
   $result = db_query($mysqli, $sql);
   $data = $result->fetch_all(MYSQLI_ASSOC);
 
-  // 成功回應
+
   send_json([
     'status' => 'success',
     'message' => '資料取得成功',
     'data' => $data
   ]);
+  $conn->close();
 ?>
