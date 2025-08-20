@@ -1,29 +1,28 @@
 <?php
   require_once __DIR__ . '/../../common/conn.php';
+  require_once __DIR__ . '/../../common/cors.php';
   require_once __DIR__ . '/../../common/functions.php';
 
   // 只允許使用 GET
   require_method('GET');
+  
+  // 檢查是否登入
+  $user = checkUserLoggedIn();
 
-  // 取得哪個使用者
-  $user_id = get_int_param('user_id');
-
-  // 如果沒有 user_id，就直接回傳錯誤
-  if (!$user_id) {
+  if (!$user) {
     send_json([
       'status' => 'fail',
-      'message' => '請提供 user_id'
-    ], 400);
+      'message' => '尚未登入'
+    ], 401);
   }
 
-  $where = "WHERE c.user_id = {$user_id}";
+  $user_id = $user['user_id'];
 
   // SQL 查詢
-  $sql = "SELECT 
+  $sql = sprintf("SELECT 
       c.user_id,
       u.name,
-      u.nikname,
-      u.email,
+      u.nickname,
       u.phone,
       u.address,
       c.product_id,
@@ -35,18 +34,20 @@
     FROM carts AS c
     JOIN users AS u ON c.user_id = u.user_id
     JOIN products AS p ON c.product_id = p.product_id
-    {$where}
-    ORDER BY c.created_at DESC
-  ";
+    WHERE c.user_id = {$user_id}
+    ORDER BY c.created_at DESC",
+    $user_id
+  );
 
   // 取得資料
   $result = db_query($mysqli, $sql);
   $data = $result->fetch_all(MYSQLI_ASSOC);
-
+  
   // 成功回應
   send_json([
     'status' => 'success',
     'message' => '資料取得成功',
     'data' => $data
   ]);
+
 ?>

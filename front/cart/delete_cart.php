@@ -6,12 +6,23 @@
   // 只允許 DELETE
   $input = get_json_input();
 
+  // 檢查是否登入
+  $user = checkUserLoggedIn();
+
+  if (!$user) {
+    send_json([
+      'status' => 'fail',
+      'message' => '尚未登入'
+    ], 401);
+  }
+
+  $user_id = $user['user_id'];
+
   // 取得必填欄位
-  $user_id = isset($input['user_id']) ? intval($input['user_id']) : null;
   $product_id = isset($input['product_id']) ? intval($input['product_id']) : null;
 
   // 檢查欄位
-  if (!$user_id || !$product_id) {
+  if (!$product_id) {
     send_json([
       'status' => 'fail',
       'message' => '請提供 user_id 與 product_id'

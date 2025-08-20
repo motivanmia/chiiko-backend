@@ -6,15 +6,26 @@
   // 只允許 PATCH
   require_method('PATCH');
 
+    // 檢查是否登入
+  $user = checkUserLoggedIn();
+  
+  if (!$user) {
+    send_json([
+      'status' => 'fail',
+      'message' => '尚未登入'
+    ], 401);
+  }
+
+  $user_id = $user['user_id'];
+
   $input = get_json_input();
 
   // 取得必要欄位
   $product_id = isset($input['product_id']) ? intval($input['product_id']) : null;
-  $user_id = isset($input['user_id']) ? intval($input['user_id']) : null;
   $quantity = isset($input['quantity']) ? intval($input['quantity']) : null;
 
   // 檢查必填欄位
-  if (!$product_id || !$user_id || !$quantity) {
+  if (!$product_id || !$quantity) {
     send_json([
       'status' => 'fail',
       'message' => '請輸入必填選項!'

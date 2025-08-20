@@ -5,19 +5,39 @@
 
   require_method('POST');
 
+  // 檢查是否登入
+  $user = checkUserLoggedIn();
+  
+  if (!$user) {
+    send_json([
+      'status' => 'fail',
+      'message' => '尚未登入'
+    ], 401);
+  }
+
+  $user_id = $user['user_id'];
+
   // 讀取 raw JSON
   $input = get_json_input();
 
   $product_id = isset($input['product_id']) ? intval($input['product_id']) : null;
-  $user_id = isset($input['user_id']) ? intval($input['user_id']) : null;
   $quantity = isset($input['quantity']) ? intval($input['quantity']) : null;
 
   // 檢查必填欄位
-  if (!$product_id || !$user_id || !$quantity) {
+  if (!$product_id || !$quantity) {
     send_json([
       'status' => 'fail',
       'message' => '請輸入必填選項!'
     ], 400);
+  }
+
+  // 檢查商品是否存在
+  $check_product = $mysqli->query("SELECT product_id FROM products WHERE product_id = $product_id");
+  if ($check_product->num_rows === 0) {
+      send_json([
+          'status' => 'fail',
+          'message' => '商品不存在'
+      ], 400);
   }
 
   // 檢查購物車是否已有此商品

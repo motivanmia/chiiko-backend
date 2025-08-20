@@ -5,16 +5,17 @@
 
   require_method('DELETE');
 
-  // 取得 JSON 輸入
-  $input = get_json_input();
-  $user_id = isset($input['user_id']) ? intval($input['user_id']) : null;
+  // 檢查是否登入
+  $user = checkUserLoggedIn();
 
-  if (!$user_id) {
+  if (!$user) {
     send_json([
       'status' => 'fail',
-      'message' => '請提供 user_id'
-    ], 400);
+      'message' => '尚未登入'
+    ], 401);
   }
+
+  $user_id = $user['user_id'];
 
   // 刪除該使用者所有購物車商品
   $sql = sprintf(

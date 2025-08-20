@@ -1,1 +1,16 @@
 /common/config.php
+
+# Composer vendor
+/vendor/
+
+# Composer lock file (可選，通常建議保留 composer.lock)
+# /composer.lock
+
+# PHP-CS-Fixer cache 檔案
+/.php-cs-fixer.cache
+
+# OS 及編輯器相關檔案
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
