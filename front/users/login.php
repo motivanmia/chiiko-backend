@@ -34,16 +34,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             
             // 驗證密碼
             if (password_verify($password, $user['password'])) {
-                // 登入成功
-                http_response_code(200); // OK
-                echo json_encode([
-                    'message' => '登入成功！',
-                    'user' => [
-                        'id' => $user['id'],
-                        'name' => $user['name'],
-                        'account' => $account
-                    ]
-                ]);
+              // 登入成功
+
+              $_SESSION['user_id'] = $user['user_id'];
+              $_SESSION['user_name'] = $user['name'];
+              $_SESSION['is_logged_in'] = true; // 標記為已登入
+              http_response_code(200); // OK
+              echo json_encode([
+                'message' => '登入成功！',
+                'user' => [
+                    'user_id' => $user['user_id'],
+                    'name' => $user['name'],
+                    'account' => $account
+                ]
+              ]);
             } else {
                 // 密碼錯誤
                 http_response_code(401); // Unauthorized
