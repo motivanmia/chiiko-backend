@@ -28,46 +28,63 @@
     WHERE r.recipe_id = {$recipe_id}";
 
   $result_recipe = db_query($mysqli, $sql_recipe);
+
+  if (!$result_recipe) {
+    send_json(['status' => 'error', 'message' => '查詢食譜時發生資料庫錯誤'], 500);
+    exit;
+  }
+
   $recipe_data = $result_recipe->fetch_assoc(); 
+  if (!$recipe_data) {
+    send_json([
+      'status' => 'error', 
+      'message' => '找不到指定的食譜',
+      'data' => null
+    ], 404);
+    exit;
+  }
 
-  // 如果找到了食譜，才繼續查詢其所有關聯資料
-  if ($recipe_data) {
-    // --- 第二步：查詢步驟 ---
-    $sql_steps = "SELECT step_id, `order`, content FROM steps WHERE recipe_id = {$recipe_id} ORDER BY `order` ASC";
-    $result_steps = db_query($mysqli, $sql_steps);
-    $recipe_data['steps'] = $result_steps->fetch_all(MYSQLI_ASSOC);
+  // --- 如果找到了食譜，才繼續查詢其所有關聯資料 ---
 
-    // --- 第三步：查詢食材 ---
-    $sql_ingredients = "SELECT ii.ingredient_item_id, i.name, ii.serving AS amount 
-      FROM ingredient_item AS ii
-      JOIN ingredients AS i ON ii.ingredient_id = i.ingredient_id
-      WHERE ii.recipe_id = {$recipe_id}";
-    $result_ingredients = db_query($mysqli, $sql_ingredients);
-    $recipe_data['ingredients'] = $result_ingredients->fetch_all(MYSQLI_ASSOC);
-    
-    // --- 第四步：查詢留言 ---
-    $sql_comments = "SELECT
-        rc.comment_id,
-        rc.parent_id,
-        rc.content,
-        rc.created_at,
-        m.user_id,
-        m.name AS member_name
-      FROM recipe_comment AS rc
-      JOIN users AS m ON rc.member_id = m.user_id
-      WHERE rc.recipe_id = {$recipe_id} AND rc.status = 0
-      ORDER BY rc.created_at ASC";
-      
-    $result_comments = db_query($mysqli, $sql_comments);
-    $recipe_data['comments'] = $result_comments->fetch_all(MYSQLI_ASSOC);
+  // --- 第二步：查詢步驟 ---
+  $sql_steps = "SELECT step_id, `order`, content FROM steps WHERE recipe_id = {$recipe_id} ORDER BY `order` ASC";
+  $result_steps = db_query($mysqli, $sql_steps);
+  $recipe_data['steps'] = $result_steps ? $result_steps->fetch_all(MYSQLI_ASSOC) : [];
 
-    // --- ⭐️ 新增的第五步：獨立查詢它的收藏總數 ⭐️ ---
-    // 使用 COUNT(*) 來計算 recipe_favorite 表中有幾筆符合的紀錄
-    $sql_favorites_count = "SELECT COUNT(*) AS total_favorites FROM recipe_favorite WHERE recipe_id = {$recipe_id}";
-    $result_favorites_count = db_query($mysqli, $sql_favorites_count);
-    $favorites_count_data = $result_favorites_count->fetch_assoc();
-    // 將計算出的總數，作為一個新的 'favorites_count' 欄位，加入到主食譜資料中
-    $recipe_data['favorites_count'] = $favorites_count_data['total_favorites'];
+  // --- 第三步：查詢食材 ---
+  $sql_ingredients = "SELECT ii.ingredient_item_id, i.name, ii.serving AS amount 
+    FROM ingredient_item AS ii
+    JOIN ingredients AS i ON ii.ingredient_id = i.ingredient_id
+    WHERE ii.recipe_id = {$recipe_id}";
+  $result_ingredients = db_query($mysqli, $sql_ingredients);
+  $recipe_data['ingredients'] = $result_ingredients ? $result_ingredients->fetch_all(MYSQLI_ASSOC) : [];
+  
+  // --- 第四步：查詢留言 ---
+  $sql_comments = "SELECT
+      rc.comment_id,
+      rc.parent_id,
+      rc.content,
+      rc.created_at,
+      m.user_id,
+      m.name AS member_name
+    FROM recipe_comment AS rc
+    JOIN users AS m ON rc.member_id = m.user_id
+    WHERE rc.recipe_id = {$recipe_id} AND rc.status = 0
+    ORDER BY rc.created_at ASC";
+  $result_comments = db_query($mysqli, $sql_comments);
+  $recipe_data['comments'] = $result_comments ? $result_comments->fetch_all(MYSQLI_ASSOC) : [];
+
+  // --- 第五步：查詢收藏總數 (修正後) ---
+  $sql_favorites_count = "SELECT COUNT(*) AS total_favorites FROM recipe_favorite WHERE recipe_id = {$recipe_id}";
+  $result_favorites_count = db_query($mysqli, $sql_favorites_count);
+  
+  // ⭐️ 核心修正：加入保護，確保即使查詢失敗也不會產生致命錯誤 ⭐️
+  if ($result_favorites_count) {
+      $favorites_count_data = $result_favorites_count->fetch_assoc();
+      $recipe_data['favorites_count'] = isset($favorites_count_data['total_favorites']) ? (int) $favorites_count_data['total_favorites'] : 0;
+  } else {
+      // 如果查詢失敗，給一個預設值 0
+      $recipe_data['favorites_count'] = 0;
   }
 
   // --- 最終步：回傳合併後的所有資料 ---
