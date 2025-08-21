@@ -41,6 +41,4 @@
     http_response_code(200);
     exit;
   }
-  header("Access-Control-Allow-Headers: Content-Type");
-  // 允許前端傳送 Content-Type 標頭，以解決 CORS 預檢請求錯誤
 ?>
