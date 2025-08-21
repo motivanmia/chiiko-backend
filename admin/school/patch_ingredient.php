@@ -80,12 +80,9 @@ try {
   $stmt->close();
 
   // 回查更新後的資料
-  $q = $mysqli->prepare("SELECT * FROM `ingredients` WHERE `ingredient_id` = ?");
-  $q->bind_param("i", $id);
-  $q->execute();
-  $res = $q->get_result();
+  $selectSql = "SELECT * FROM `ingredients` WHERE `ingredient_id` = " . (int)$id;
+  $res = db_query($mysqli, $selectSql);
   $row = $res->fetch_assoc() ?: [];
-  $q->close();
 
   $mysqli->close();
 

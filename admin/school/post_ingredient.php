@@ -49,12 +49,9 @@ try {
   $stmt->close();
 
   // 回查
-  $q = $mysqli->prepare("SELECT * FROM `ingredients` WHERE `ingredient_id` = ?");
-  $q->bind_param("i", $new_id);
-  $q->execute();
-  $res = $q->get_result();
+  $selectSql = "SELECT * FROM `ingredients` WHERE `ingredient_id` = " . (int)$new_id;
+  $res = db_query($mysqli, $selectSql);
   $row = $res->fetch_assoc() ?: [];
-  $q->close();
 
   $mysqli->close();
 
