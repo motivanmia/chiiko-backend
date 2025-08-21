@@ -1,9 +1,13 @@
 <?php
   // 統一輸出 JSON
   function send_json($data, $status_code = 200) {
-    // 判斷是否完整網址
+  // 判斷是否為完整網址或 data:/blob:，是的話就不加前綴
     $is_absolute = function ($val) {
-        // return is_string($val) && preg_match('#^(https?:)?//#i', $val) || str_starts_with($val, 'data:');
+      return is_string($val) && (
+        preg_match('#^(?:https?:)?//#i', $val) ||
+        str_starts_with($val, 'data:') ||
+        str_starts_with($val, 'blob:')
+      );
     };
 
     // 加上 IMG_BASE_URL
@@ -14,7 +18,7 @@
       return rtrim(IMG_BASE_URL, '/') . '/' . ltrim($val, '/');
     };
 
-    // 嘗試把JSON字串轉回PHP值（失敗就回null）
+    // 嘗試把 JSON 字串轉回 PHP 值（失敗回 null）
     $try_json_decode = function ($val) {
       if (!is_string($val)) return null;
       $trim = trim($val);
@@ -23,31 +27,34 @@
       return (json_last_error() === JSON_ERROR_NONE) ? $decoded : null;
     };
 
+    // 欄位白名單
+    $should_prefix_key = function ($key) {
+      return (bool)preg_match('/(?:^|_)(?:image|images)$/i', $key);
+    };
+
     // 遞迴處理
-    $process = function ($item) use (&$process, $prefix, $try_json_decode) {
+    $process = function ($item) use (&$process, $prefix, $try_json_decode, $should_prefix_key) {
       if (is_array($item)) {
         $out = [];
         foreach ($item as $k => $v) {
-          if ($k === 'image') {
-            // 1) 陣列：逐一加前綴
+          if ($should_prefix_key($k)) {
+            // 1) 陣列：每個值都加前綴
             if (is_array($v)) {
               $out[$k] = array_map($prefix, $v);
             }
-            // 2) 字串：可能是檔名或JSON陣列字串
+            // 2) 字串：可能是檔名或 JSON 陣列字串
             elseif (is_string($v)) {
               $maybe = $try_json_decode($v);
               if (is_array($maybe)) {
-                // JSON 陣列字串 → 轉陣列後逐一加前綴
                 $out[$k] = array_map($prefix, $maybe);
               } else {
-                // 單一檔名字串 → 加前綴
                 $out[$k] = $prefix($v);
               }
             } else {
               $out[$k] = $v; // 其他型別照原樣
             }
           } else {
-            // 其他欄位照舊遞迴（不動 content 等）
+            // 其他欄位繼續遞迴（支援巢狀結構）
             $out[$k] = $process($v);
           }
         }
@@ -63,6 +70,7 @@
     echo json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     exit;
   }
+
 
 
   // 只允許使用 $method
