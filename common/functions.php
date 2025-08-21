@@ -125,7 +125,7 @@
     }
 
     // 允許上傳的檔案副檔名
-    $allowed_types=['jpg','jpeg','png','gif'];
+    $allowed_extensions=['jpg','jpeg','png','gif', 'webp'];
 
     if(!$is_multiple){
       // 處理單一檔案
@@ -134,13 +134,13 @@
       // 獲得檔案副檔名
       $extension = strtolower(pathinfo($file_info['name'] ,PATHINFO_EXTENSION));
 
-      // 檢查是否為允許的附檔名 不符則回傳null 中斷執行
-      if(!in_array($extension,$allowed_types)){
+      // 如果副檔名不在允許列表，則回傳 null
+      if(!in_array($extension, $allowed_extensions)){
         return null;
       }
 
       // 產生新檔名避免檔名衝突
-      $new_filename = uniqid('product_') . time() . '.' . $extension;
+      $new_filename = uniqid('file_') . time() . '.' . $extension;
 
       // 設定路徑
       $target_path = $upload_dir . $new_filename;
@@ -151,27 +151,30 @@
       return null;
     }else{
       // 處理多檔
-      $save_paths = [];
+      $save_names = [];
       $file_count = count($file_info['name']);
 
       for($i = 0; $i<$file_count; $i++){
+        // 檢查單個檔案的錯誤
         if($file_info['error'][$i] !== UPLOAD_ERR_OK) continue;
         
-        $extension = strtolower(pathinfo($file_info['name'][$i] ,PATHINFO_EXTENSION));
+        // 獲取檔案副檔名
+        $extension = strtolower(pathinfo($file_info['name'][$i], PATHINFO_EXTENSION));
 
-        // 如果檔案格式不符就跳過 處理下一個檔案
-        if(!in_array($extension,$allowed_types)){
+        // 檢查是否為允許的檔案類型
+        if(!in_array($extension, $allowed_extensions)){
           continue;
         }
 
-        $new_filename = uniqid('product_') . time() . '_' . $i . '.' . $extension;
+        // 產生新檔名
+        $new_filename = uniqid('file_') . time() . '_' . $i . '.' . $extension;
         $target_path = $upload_dir . $new_filename;
 
-        if(move_uploaded_file($file_info['tmp_name'][$i],$target_path)){
-          $save_paths[] =  $new_filename;
+        if(move_uploaded_file($file_info['tmp_name'][$i], $target_path)){
+          $save_names[] = $new_filename;
         }
       }
-      return $save_paths;
+      return $save_names;
     }
   };
 
