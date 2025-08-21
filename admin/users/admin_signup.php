@@ -21,6 +21,7 @@
   $account = $data['account'] ?? null;
   $password = $data['password'] ?? null;
 
+
   // 必填欄位檢查
   if (empty($name) || empty($password) || empty($account)) {
       http_response_code(400);
@@ -56,12 +57,14 @@
     // 密碼加密
     $hashed_password = password_hash($password, PASSWORD_DEFAULT);
 
+    $role = 1;
+
     // 寫入資料庫
     // 確保你的欄位數量與 bind_param 數量一致
-    $stmt = $mysqli->prepare("INSERT INTO managers (name, password, account) VALUES (?, ?, ?)");
+    $stmt = $mysqli->prepare("INSERT INTO managers (name, password, account, role ) VALUES (?, ?, ?, ?)");
     
     // "ssss" 代表四個參數都是字串
-    $stmt->bind_param("sss", $name, $hashed_password, $account);
+    $stmt->bind_param("sssi", $name, $hashed_password, $account, $role);
 
     $stmt->execute();
 

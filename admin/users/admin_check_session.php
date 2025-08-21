@@ -15,7 +15,8 @@
           'is_logged_in' => true,
           'user' => [
               'manager_id' => $_SESSION['manager_id'],
-              'name' => $_SESSION['name']
+              'name' => $_SESSION['name'],
+              'role' => $_SESSION['role'],
           ]
       ];
   } else {
