@@ -1,4 +1,5 @@
 <?php
+  require_once __DIR__ . '/../../common/config.php';
   require_once __DIR__ . '/../../common/conn.php';
   require_once __DIR__ . '/../../common/cors.php';
   require_once __DIR__ . '/../../common/functions.php';
@@ -87,5 +88,5 @@
   }
 
   $stmt -> close();
-  $mysql -> close();
+  $mysqli -> close();
 ?>
