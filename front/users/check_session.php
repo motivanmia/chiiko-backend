@@ -4,10 +4,12 @@
   require_once __DIR__ . '/../../common/functions.php';
 
   // 先給 $response 一個預設值，避免未定義錯誤
-  $response = [
-    'is_logged_in' => false
-  ];
+  // $response = [
+  //   'is_logged_in' => false
+  // ];
 
+  // 設定 Content-Type 標頭為 JSON
+  header('Content-Type: application/json');
   
   // 檢查 Session 中是否有 'is_logged_in' 且為 true
   if (isset($_SESSION['is_logged_in']) && $_SESSION['is_logged_in'] === true) {
