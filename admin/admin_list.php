@@ -20,7 +20,7 @@ if (isset($_SESSION['role']) && $_SESSION['role'] !== 0) {
 try {
     // 3. 從資料庫查詢管理員資料
     // 選取你需要顯示的欄位
-    $stmt = $mysqli->prepare("SELECT manager_id, name, account, role, status FROM managers ORDER BY manager_id DESC");
+    $stmt = $mysqli->prepare("SELECT manager_id, name, account, role, status FROM managers ORDER BY manager_id");
     $stmt->execute();
     $result = $stmt->get_result();
 

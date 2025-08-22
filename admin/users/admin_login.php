@@ -1,10 +1,10 @@
 <?php
-  require_once __DIR__ . '/../../common/conn.php';
-  require_once __DIR__ . '/../../common/cors.php';
-  require_once __DIR__ . '/../../common/functions.php';
+    require_once __DIR__ . '/../../common/conn.php';
+    require_once __DIR__ . '/../../common/cors.php';
+    require_once __DIR__ . '/../../common/functions.php';
 
 
-  if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // 獲取前端 JSON 資料
     $data = json_decode(file_get_contents('php://input'), true);
 
@@ -20,14 +20,10 @@
 
     try {
         // 準備 SQL 查詢，根據帳號查詢使用者資料
-        $stmt = $mysqli->prepare("SELECT manager_id, name, password, role FROM managers WHERE account = ?");
+        $stmt = $mysqli->prepare("SELECT manager_id, name, password, role, status FROM managers WHERE account = ?");
         $stmt->bind_param("s", $account);
         $stmt->execute();
         $result = $stmt->get_result();
-
-        // $account = $mysqli -> real_escape_string($account);
-        // $sql = "SELECT manager_id, name, password, role FROM managers WHERE account = '${account}'";
-        // $result = $mysqli -> query($sql);
 
 
         if ($result->num_rows === 1) {
@@ -35,21 +31,31 @@
             
             // 驗證密碼
             if (password_verify($password, $user['password'])) {
-              // 登入成功
 
-              $_SESSION['manager_id'] = $user['manager_id'];
-              $_SESSION['name'] = $user['name'];
-              $_SESSION['is_logged_in'] = true; // 標記為已登入
-              $_SESSION['role'] = $user['role']; 
-              http_response_code(200); // OK
-              echo json_encode([
+                // ✅ 新增狀態檢查
+                if ($user['status'] == 1) {
+                    http_response_code(403); // Forbidden
+                    echo json_encode([
+                        'message' => '此帳號已被停用，無法登入。'
+                    ]);
+                    exit(); // 💡 找到帳號但狀態不允許，直接結束程式
+                }
+                
+                // 登入成功
+
+                $_SESSION['manager_id'] = $user['manager_id'];
+                $_SESSION['name'] = $user['name'];
+                $_SESSION['is_logged_in'] = true; // 標記為已登入
+                $_SESSION['role'] = $user['role']; 
+                http_response_code(200); // OK
+                echo json_encode([
                 'message' => '登入成功！',
                 'user' => [
                     'manager_id' => $user['manager_id'],
                     'name' => $user['name'],
                     'role' => $user['role']
                 ]
-              ]);
+                ]);
             } else {
                 // 密碼錯誤
                 http_response_code(401); // Unauthorized
@@ -64,9 +70,9 @@
         $stmt->close();
         $mysqli->close();
 
-    } catch (mysqli_sql_exception $e) {
-        http_response_code(500); // Internal Server Error
-        echo json_encode(['message' => '伺服器內部錯誤，請稍後再試。']);
+        } catch (mysqli_sql_exception $e) {
+            http_response_code(500); // Internal Server Error
+            echo json_encode(['message' => '伺服器內部錯誤，請稍後再試。']);
+        }
     }
-}
 ?>
