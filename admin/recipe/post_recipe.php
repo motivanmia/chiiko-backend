@@ -1,5 +1,5 @@
 <?php
-  require_once __DIR__ . '/../../common/config.php';
+  require_once __DIR__ . '/../../../common/config.php';
   require_once __DIR__ . '/../../common/functions.php';
   require_once __DIR__ . '/../../common/cors.php';
   require_once __DIR__ . '/../../common/conn.php';
@@ -30,7 +30,9 @@
     }
 
     // SQL 操作...
-    $sql = "INSERT INTO `recipe` (...) VALUES (?,?,?,?,?,?,?,?,?,?,NOW())";
+$sql = "INSERT INTO `recipe`
+(`user_id`, `manage_id`, `recipe_category_id`, `name`, `content`, `serving`, `image`, `cooked_time`, `status`, `tag`, `created_at`)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())";
     $types = "iiisssssis";
     $params = [
       $user_id, $manage_id, $recipe_category_id,
