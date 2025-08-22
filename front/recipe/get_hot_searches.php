@@ -1,5 +1,4 @@
 <?php
-// 引入資料庫連線和 CORS 設定
 require_once __DIR__ . '/../../common/conn.php';
 require_once __DIR__ . '/../../common/cors.php';
 require_once __DIR__ . '/../../common/config.php';
@@ -8,10 +7,8 @@ header('Content-Type: application/json');
 global $mysqli;
 
 try {
-    // 查詢點擊數最高的4個食譜，並只選擇需要的欄位
     $sql = "SELECT recipe_id, name FROM recipe ORDER BY views DESC LIMIT 4";
     
-    // 使用 mysqli_query 執行查詢
     $result = $mysqli->query($sql);
 
     if (!$result) {

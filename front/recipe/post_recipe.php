@@ -17,7 +17,7 @@ if ($method === 'POST') {
         // 使用 intval() 確保它們是數字，防止 SQL 注入。
         $user_id = isset($data['user_id']) ? intval($data['user_id']) : 'NULL';
         $manage_id = isset($data['manage_id']) ? intval($data['manage_id']) : 'NULL';
-        $recipe_categary_id = isset($data['recipe_categary_id']) ? intval($data['recipe_categary_id']) : 'NULL';
+        $recipe_category_id = isset($data['recipe_category_id']) ? intval($data['recipe_category_id']) : 'NULL';
         $status = isset($data['status']) ? intval($data['status']) : 0; // status 通常給個預設值 0
 
         // 這些是字串型別的欄位。
@@ -32,10 +32,10 @@ if ($method === 'POST') {
 
         // 拼接 SQL 查詢字串
         $sql = "INSERT INTO `recipe` (
-            `user_id`, `manage_id`, `recipe_categary_id`, `name`, `content`, 
+            `user_id`, `manage_id`, `recipe_category_id`, `name`, `content`, 
             `serving`, `image`, `cooked_time`, `status`, `tag`
         ) VALUES (
-            {$user_id}, {$manage_id}, {$recipe_categary_id}, {$name}, {$content},
+            {$user_id}, {$manage_id}, {$recipe_category_id}, {$name}, {$content},
             {$serving}, {$image}, {$cooked_time}, {$status}, {$tag}
         )";
 
