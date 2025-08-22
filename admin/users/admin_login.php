@@ -1,10 +1,9 @@
 <?php
-    require_once __DIR__ . '/../../common/conn.php';
-    require_once __DIR__ . '/../../common/cors.php';
-    require_once __DIR__ . '/../../common/functions.php';
+require_once __DIR__ . '/../../common/conn.php';
+require_once __DIR__ . '/../../common/cors.php';
+require_once __DIR__ . '/../../common/functions.php';
 
-
-    if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // 獲取前端 JSON 資料
     $data = json_decode(file_get_contents('php://input'), true);
 
@@ -14,20 +13,32 @@
     // 必填欄位檢查
     if (empty($account) || empty($password)) {
         http_response_code(400); // Bad Request
-        echo json_encode(['message' => '請輸入帳號、密碼']);
+        echo json_encode([
+            'status' => 'fail',
+            'message' => '請輸入帳號、密碼']);
         exit();
     }
 
     try {
-        // 準備 SQL 查詢，根據帳號查詢使用者資料
-        $stmt = $mysqli->prepare("SELECT manager_id, name, password, role, status FROM managers WHERE account = ?");
-        $stmt->bind_param("s", $account);
-        $stmt->execute();
-        $result = $stmt->get_result();
+        // ⚠️ 在使用 mysqli_query() 時，必須手動處理輸入以防止 SQL 注入
+        $safe_account = mysqli_real_escape_string($mysqli, $account);
 
+        // 準備 SQL 查詢
+        // 💡 確保 SQL 語法正確，表名是 managers
+        $sql = "SELECT `manager_id`, `name`, `password`, `role`, `status` FROM `managers` WHERE `account` = '$safe_account'";
+        $result = mysqli_query($mysqli, $sql);
 
-        if ($result->num_rows === 1) {
-            $user = $result->fetch_assoc();
+        // 檢查查詢是否成功
+        if (!$result) {
+            http_response_code(500); // Internal Server Error
+            echo json_encode([
+                'status' => 'fail',
+                'message' => '查詢失敗，請稍後再試。']);
+            exit();
+        }
+
+        if (mysqli_num_rows($result) === 1) {
+            $user = mysqli_fetch_assoc($result);
             
             // 驗證密碼
             if (password_verify($password, $user['password'])) {
@@ -36,43 +47,52 @@
                 if ($user['status'] == 1) {
                     http_response_code(403); // Forbidden
                     echo json_encode([
+                        'status' => 'fail',
                         'message' => '此帳號已被停用，無法登入。'
                     ]);
-                    exit(); // 💡 找到帳號但狀態不允許，直接結束程式
+                    exit();
                 }
                 
                 // 登入成功
-
                 $_SESSION['manager_id'] = $user['manager_id'];
                 $_SESSION['name'] = $user['name'];
-                $_SESSION['is_logged_in'] = true; // 標記為已登入
-                $_SESSION['role'] = $user['role']; 
+                $_SESSION['is_logged_in'] = true;
+                $_SESSION['role'] = (int)$user['role'];
                 http_response_code(200); // OK
                 echo json_encode([
-                'message' => '登入成功！',
-                'user' => [
-                    'manager_id' => $user['manager_id'],
-                    'name' => $user['name'],
-                    'role' => $user['role']
-                ]
+                    'status' => 'success',
+                    'message' => '登入成功！',
+                    'user' => [
+                        'manager_id' => $user['manager_id'],
+                        'name' => $user['name'],
+                        'role' => $user['role'],
+                        'role' => (int)$user['role']
+                    ]
                 ]);
             } else {
                 // 密碼錯誤
                 http_response_code(401); // Unauthorized
-                echo json_encode(['message' => '帳號或密碼不正確。']);
+                echo json_encode([
+                    'status' => 'fail',
+                    'message' => '帳號或密碼不正確。']);
             }
         } else {
             // 帳號不存在
             http_response_code(401); // Unauthorized
-            echo json_encode(['message' => '帳號或密碼不正確。']);
+            echo json_encode([
+                'status' => 'fail',
+                'message' => '帳號或密碼不正確。']);
         }
 
-        $stmt->close();
-        $mysqli->close();
+        // 釋放結果集
+        mysqli_free_result($result);
+        mysqli_close($mysqli);
 
-        } catch (mysqli_sql_exception $e) {
-            http_response_code(500); // Internal Server Error
-            echo json_encode(['message' => '伺服器內部錯誤，請稍後再試。']);
-        }
+    } catch (Exception $e) {
+        http_response_code(500); // Internal Server Error
+        echo json_encode([
+            'status' => 'fail',
+            'message' => '伺服器內部錯誤，請稍後再試。']);
     }
+}
 ?>
