@@ -12,6 +12,7 @@
         // 如果已登入，回傳使用者資料
         // ✅ 確保回傳的鍵名 (key) 與前端 Pinia Store 預期的 'user.name' 一致
         $response = [
+            'status' => 'success',
             'is_logged_in' => true,
             'user' => [
                 'manager_id' => $_SESSION['manager_id'],
@@ -22,6 +23,7 @@
     } else {
         // 如果未登入，回傳未登入狀態
         $response = [
+            'status' => 'fail',
             'is_logged_in' => false
         ];
     }
