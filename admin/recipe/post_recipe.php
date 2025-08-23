@@ -13,7 +13,7 @@
     $toStrOrNull = fn($v) => (isset($v) && $v !== '') ? (string)$v : null;
 
     $user_id            = $toIntOrNull($data['user_id'] ?? null);
-    $manage_id          = $toIntOrNull($data['manage_id'] ?? null);
+    $manager_id          = $toIntOrNull($data['manager_id'] ?? null);
     $recipe_category_id = $toIntOrNull($data['recipe_category_id'] ?? null);
     // ... 其他欄位 ...
     $status_code        = is_numeric($data['status'] ?? 3) && in_array((int)($data['status'] ?? 3), [0,1,2,3], true) ? (int)$data['status'] : 3;
@@ -35,7 +35,7 @@ $sql = "INSERT INTO `recipe`
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())";
     $types = "iiisssssis";
     $params = [
-      $user_id, $manage_id, $recipe_category_id,
+      $user_id, $manager_id, $recipe_category_id,
       $data['name'] ?? '', $data['content'] ?? '', $data['serving'] ?? null,
       $data['image'] ?? '', $data['cooked_time'] ?? null, $status_code, $data['tag'] ?? ''
     ];
