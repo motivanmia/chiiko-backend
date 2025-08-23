@@ -18,13 +18,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // 必填欄位檢查
     if (empty($account) || empty($password)) {
         http_response_code(400); // Bad Request
-        echo json_encode(['message' => '電子信箱與密碼為必填。']);
+        echo json_encode(['message' => '請輸入帳號及密碼']);
         exit();
     }
 
     try {
         // 準備 SQL 查詢，根據帳號查詢使用者資料
-        $stmt = $mysqli->prepare("SELECT user_id, name, password FROM users WHERE account = ?");
+        $stmt = $mysqli->prepare("SELECT user_id, name, password,status FROM users WHERE account = ?");
         $stmt->bind_param("s", $account);
         $stmt->execute();
         $result = $stmt->get_result();
@@ -34,8 +34,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             
             // 驗證密碼
             if (password_verify($password, $user['password'])) {
-              // 登入成功
+              // 會員狀態檢查
+              if ($user['status'] === 1) {
+                http_response_code(403); // Forbidden
+                  echo json_encode([
+                    'status' => 'fail', 
+                    'message' => '此帳號已被停權，請聯繫客服。'
+                  ]);
+                  exit();
+              }
 
+              // 登入成功
               $_SESSION['user_id'] = $user['user_id'];
               $_SESSION['user_name'] = $user['name'];
               $_SESSION['is_logged_in'] = true; // 標記為已登入
