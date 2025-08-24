@@ -191,4 +191,20 @@
     // 如果未登入，回傳 false
     return false;
   }
+  function write_log($message) {
+    $logDir = 'C:/logs';           // 日誌資料夾
+    $datetime = date('Y-m-d-H');
+    $logFile = $logDir . '/'. $$datetime .'.log'; // 日誌檔案
+
+    // 如果資料夾不存在就建立
+    if (!is_dir($logDir)) {
+        mkdir($logDir, 0777, true);
+    }
+
+    // 時間戳記
+    $time = date('Y-m-d H:i:s');
+
+    // 將訊息寫入檔案
+    file_put_contents($logFile, "[$time] $message" . PHP_EOL, FILE_APPEND);
+  }
 ?>
