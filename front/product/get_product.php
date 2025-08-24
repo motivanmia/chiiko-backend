@@ -8,7 +8,7 @@
 
   // 1. 接收前端傳來的參數
   $type = isset($_GET['type']) ? $_GET['type'] : null;
-  $categoryId = isset($_GET['category_id']) ? $_GET['category_id'] : null;
+  $categoryId = isset($_GET['product_category_id']) ? $_GET['product_category_id'] : null;
   
   $sql = "SELECT * FROM products WHERE 1";
 
