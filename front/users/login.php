@@ -35,7 +35,7 @@
       // 驗證密碼
       if (password_verify($password, $user['password'])) {
         // 會員狀態檢查
-        if ($user['status'] === 1) {
+        if ($user['status'] == 1) {
           http_response_code(403); 
           echo json_encode([
             'status' => 'fail',
