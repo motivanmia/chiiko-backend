@@ -1,4 +1,6 @@
 <?php
+
+//刪除食譜功能
 require_once __DIR__ . '/../../common/conn.php';
 require_once __DIR__ . '/../../common/cors.php';
 require_once __DIR__ . '/../../common/functions.php';
