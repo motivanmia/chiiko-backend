@@ -63,8 +63,10 @@
       return $item;
     };
 
-    $data = $process($data);
+    write_log("data: " . json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
 
+    $data = $process($data);
+    write_log("before data: ". $data);
     header('Content-Type: application/json; charset=utf-8');
     http_response_code($status_code);
     echo json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
@@ -194,7 +196,7 @@
   function write_log($message) {
     $logDir = 'C:/logs';           // 日誌資料夾
     $datetime = date('Y-m-d-H');
-    $logFile = $logDir . '/'. $$datetime .'.log'; // 日誌檔案
+    $logFile = $logDir . '/'. $datetime .'.log'; // 日誌檔案
 
     // 如果資料夾不存在就建立
     if (!is_dir($logDir)) {
