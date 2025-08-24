@@ -1,4 +1,5 @@
 <?php
+//新增食譜功能
   require_once __DIR__ . '/../../common/cors.php';
   require_once __DIR__ . '/../../common/config.php';
   require_once __DIR__ . '/../../common/functions.php';
