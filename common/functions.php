@@ -63,10 +63,10 @@
       return $item;
     };
 
-    write_log("data: " . json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+    // write_log("data: " . json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
 
-    $data = $process($data);
-    write_log("before data: ". $data);
+    // $data = $process($data);
+    // write_log("before data: ". $data);
     header('Content-Type: application/json; charset=utf-8');
     http_response_code($status_code);
     echo json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
