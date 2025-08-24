@@ -1,10 +1,14 @@
 <?php
+// ✅ 保持這行，它負責引入 config.php 並定義 IMG_BASE_URL
 require_once __DIR__ . '/../../common/config.php';
 require_once __DIR__ . '/../../common/conn.php';
 require_once __DIR__ . '/../../common/cors.php';
 
+// ❌ 移除這行多餘的 define，因為它已經在 config.php 中定義過了
+// define("IMG_BASE_URL", "http://localhost:8888/uploads"); 
+
 header('Content-Type: application/json');
-global $mysqli; // ✅ 保持 global 宣告，確保可以使用 $mysqli
+global $mysqli;
 
 try {
     if (!isset($_GET['category'])) {
@@ -15,14 +19,12 @@ try {
 
     $categoryName = urldecode($_GET['category']);
     
-    // ✅ 步驟 1: 使用 mysqli_real_escape_string 和 mysqli_query 取得 ID
-    $escapedCategoryName = $mysqli->real_escape_string($categoryName);
-    $query_category_id = "SELECT recipe_category_id FROM recipe_category WHERE name = '{$escapedCategoryName}'";
-    $result_category_id = $mysqli->query($query_category_id);
-
-    if (!$result_category_id) {
-        throw new mysqli_sql_exception('Category query failed: ' . $mysqli->error);
-    }
+    // 步驟 1: 根據中文分類名稱取得對應的 ID
+    $sql_category_id = "SELECT recipe_category_id FROM recipe_category WHERE name = ?";
+    $stmt = $mysqli->prepare($sql_category_id);
+    $stmt->bind_param("s", $categoryName);
+    $stmt->execute();
+    $result_category_id = $stmt->get_result();
 
     if ($result_category_id->num_rows === 0) {
         http_response_code(404);
@@ -33,14 +35,12 @@ try {
     $categoryRow = $result_category_id->fetch_assoc();
     $categoryId = $categoryRow['recipe_category_id'];
 
-    // ✅ 步驟 2: 使用 mysqli_real_escape_string 和 mysqli_query 查詢食譜
-    $escapedCategoryId = $mysqli->real_escape_string($categoryId);
-    $query_recipes = "SELECT recipe_id, name, content, serving, image, cooked_time, status FROM recipe WHERE recipe_category_id = '{$escapedCategoryId}'";
-    $result_recipes = $mysqli->query($query_recipes);
-
-    if (!$result_recipes) {
-        throw new mysqli_sql_exception('Recipes query failed: ' . $mysqli->error);
-    }
+    // 步驟 2: 使用 ID 查詢所有相關食譜
+    $sql_recipes = "SELECT recipe_id, name, content, serving, image, cooked_time, status FROM recipe WHERE recipe_category_id = ?";
+    $stmt = $mysqli->prepare($sql_recipes);
+    $stmt->bind_param("i", $categoryId);
+    $stmt->execute();
+    $result_recipes = $stmt->get_result();
 
     $recipes = [];
     if ($result_recipes->num_rows > 0) {
@@ -57,7 +57,6 @@ try {
     echo json_encode(['success' => false, 'message' => 'Database query failed.', 'error_detail' => $e->getMessage()]);
 
 } finally {
-    // 這裡的 close() 可以留著，但如果 conn.php 有設定持久連接則不適用
     if (isset($mysqli)) {
         $mysqli->close();
     }

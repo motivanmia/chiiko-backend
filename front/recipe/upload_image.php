@@ -1,11 +1,10 @@
 <?php
   // 步驟 1: 遵循專案的標準引入順序
   // (路徑是 ../../../ 因為它在 admin/recipe/ 內)
-  require_once __DIR__ . '/../../../common/config.php';
-  require_once __DIR__ . '/../../../common/functions.php';
-  require_once __DIR__ . '/../../../common/cors.php';
-  // conn.php 在這裡不是必須的，因為我們不操作資料庫，但引入也無妨
-  require_once __DIR__ . '/../../../common/conn.php'; 
+  require_once __DIR__ . '/../../common/config.php';
+  require_once __DIR__ . '/../../common/functions.php';
+  require_once __DIR__ . '/../../common/cors.php';
+  require_once __DIR__ . '/../../common/conn.php'; 
 
   try {
     // 步驟 2: 使用輔助函式檢查請求方法
