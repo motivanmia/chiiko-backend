@@ -4,7 +4,7 @@ require_once __DIR__ . '/../../common/conn.php';
 require_once __DIR__ . '/../../common/cors.php';
 
 header('Content-Type: application/json');
-global $mysqli; // ✅ 保持 global 宣告，確保可以使用 $mysqli
+global $mysqli; 
 
 try {
     if (!isset($_GET['category'])) {
@@ -15,7 +15,6 @@ try {
 
     $categoryName = urldecode($_GET['category']);
     
-    // ✅ 步驟 1: 使用 mysqli_real_escape_string 和 mysqli_query 取得 ID
     $escapedCategoryName = $mysqli->real_escape_string($categoryName);
     $query_category_id = "SELECT recipe_category_id FROM recipe_category WHERE name = '{$escapedCategoryName}'";
     $result_category_id = $mysqli->query($query_category_id);
@@ -33,9 +32,29 @@ try {
     $categoryRow = $result_category_id->fetch_assoc();
     $categoryId = $categoryRow['recipe_category_id'];
 
-    // ✅ 步驟 2: 使用 mysqli_real_escape_string 和 mysqli_query 查詢食譜
     $escapedCategoryId = $mysqli->real_escape_string($categoryId);
-    $query_recipes = "SELECT recipe_id, name, content, serving, image, cooked_time, status FROM recipe WHERE recipe_category_id = '{$escapedCategoryId}'";
+    $query_recipes = "SELECT
+                            r.recipe_id,
+                            r.name,
+                            r.content,
+                            r.serving,
+                            r.image,
+                            r.cooked_time,
+                            r.status,
+                            r.tag,
+                        COUNT(rf.recipe_id) AS favorite_count
+                        FROM
+                            `recipe` AS r
+                        LEFT JOIN
+                            `recipe_favorite` AS rf ON r.recipe_id = rf.recipe_id
+                        WHERE
+                            r.recipe_category_id = '{$escapedCategoryId}'
+                        GROUP BY
+                            r.recipe_id,
+                            r.tag
+                        ORDER BY
+                            r.created_at DESC
+                        ";
     $result_recipes = $mysqli->query($query_recipes);
 
     if (!$result_recipes) {
@@ -57,7 +76,6 @@ try {
     echo json_encode(['success' => false, 'message' => 'Database query failed.', 'error_detail' => $e->getMessage()]);
 
 } finally {
-    // 這裡的 close() 可以留著，但如果 conn.php 有設定持久連接則不適用
     if (isset($mysqli)) {
         $mysqli->close();
     }

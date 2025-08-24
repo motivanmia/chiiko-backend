@@ -10,7 +10,8 @@
 
     if($method === 'GET'){
       $user_id = $_SESSION['user_id'] ?? 0;
-
+      // echo json_encode($user_id);
+      // exit;
       if($user_id<=0){
         http_response_code(400);
         echo json_encode(['success'=>false,'error'=>'缺少有效會員ID']);
