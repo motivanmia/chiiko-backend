@@ -20,11 +20,6 @@
 
   // SQL 查詢
   $sql = sprintf("SELECT 
-      c.user_id,
-      u.name,
-      u.nickname,
-      u.phone,
-      u.address,
       c.product_id,
       p.name AS product_name,
       p.unit_price,

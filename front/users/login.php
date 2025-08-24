@@ -1,78 +1,87 @@
 <?php
-  ini_set("display_errors", 1);
-  error_reporting(E_ALL);
-  mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
-// 引入資料庫連線和 CORS 設定
   require_once __DIR__ . '/../../common/conn.php';
   require_once __DIR__ . '/../../common/cors.php';
   require_once __DIR__ . '/../../common/functions.php';
-
-// 處理 POST 請求
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    // 獲取前端 JSON 資料
-    $data = json_decode(file_get_contents('php://input'), true);
-
-    $account = $data['account'] ?? '';
-    $password = $data['password'] ?? '';
-
-    // 必填欄位檢查
-    if (empty($account) || empty($password)) {
-        http_response_code(400); // Bad Request
-        echo json_encode(['message' => '請輸入帳號及密碼']);
-        exit();
+  //
+  require_method('POST');
+  //
+  //獲取前端 JSON 資料
+  $data = json_decode(file_get_contents('php://input'), true);
+  //
+  $account = $data['account'] ?? '';
+  $password = $data['password'] ?? '';
+  //
+  // 必填欄位檢查
+  if (empty($account) || empty($password)) {
+    http_response_code(400);
+    echo json_encode(['message' => '請輸入帳號及密碼']);
+    exit();
+  }
+  //
+  try {
+    $safe_account = mysqli_real_escape_string($mysqli, $account);
+    //
+    $sql = "SELECT `user_id`, `name`, `password`, `status` FROM `users` WHERE `account` = '{$safe_account}'";
+    //
+    $result = mysqli_query($mysqli, $sql);
+    //
+    // 檢查查詢是否成功
+    if (!$result) {
+      throw new Exception("SQL 查詢失敗: " . mysqli_error($mysqli));
     }
-
-    try {
-        // 準備 SQL 查詢，根據帳號查詢使用者資料
-        $stmt = $mysqli->prepare("SELECT user_id, name, password,status FROM users WHERE account = ?");
-        $stmt->bind_param("s", $account);
-        $stmt->execute();
-        $result = $stmt->get_result();
-
-        if ($result->num_rows === 1) {
-            $user = $result->fetch_assoc();
-            
-            // 驗證密碼
-            if (password_verify($password, $user['password'])) {
-              // 會員狀態檢查
-              if ($user['status'] === 1) {
-                http_response_code(403); // Forbidden
-                  echo json_encode([
-                    'status' => 'fail', 
-                    'message' => '此帳號已被停權，請聯繫客服。'
-                  ]);
-                  exit();
-              }
-
-              // 登入成功
-              $_SESSION['user_id'] = $user['user_id'];
-              $_SESSION['user_name'] = $user['name'];
-              $_SESSION['is_logged_in'] = true; // 標記為已登入
-              http_response_code(200); // OK
-              echo json_encode([
-                'message' => '登入成功！',
-                'user' => [
-                    'user_id' => $user['user_id'],
-                    'name' => $user['name'],
-                    'account' => $account
-                ]
-              ]);
-            } else {
-                // 密碼錯誤
-                http_response_code(401); // Unauthorized
-                echo json_encode(['message' => '帳號或密碼不正確。']);
-            }
-        } else {
-            // 帳號不存在
-            http_response_code(401); // Unauthorized
-            echo json_encode(['message' => '帳號或密碼不正確。']);
+    //
+    if (mysqli_num_rows($result) === 1) {
+      $user = mysqli_fetch_assoc($result);
+      // 驗證密碼
+      if (password_verify($password, $user['password'])) {
+        // 會員狀態檢查
+        if ($user['status'] === 1) {
+          http_response_code(403); 
+          echo json_encode([
+            'status' => 'fail',
+            'message' => '此帳號已被停權，請聯繫客服。'
+          ]);
+          // 
+          mysqli_free_result($result);
+          mysqli_close($mysqli);
+          exit();
         }
-
-        $stmt->close();
-        $mysqli->close();
-
-    } catch (mysqli_sql_exception $e) {
-        http_response_code(500); // Internal Server Error
-        echo json_encode(['message' => '伺服器內部錯誤，請稍後再試。']);
+        // 登入成功
+        $_SESSION['user_id'] = $user['user_id'];
+        $_SESSION['user_name'] = $user['name'];
+        $_SESSION['is_logged_in'] = true;
+        http_response_code(200);
+        echo json_encode([
+          'message' => '登入成功！',
+          'user' => [
+            'user_id' => $user['user_id'],
+            'name' => $user['name'],
+            'account' => $account,
+          ]
+        ]);
+      } else {
+        // 密碼錯誤
+        http_response_code(401); 
+        echo json_encode(['message' => '帳號或密碼不正確。']);
+      }
+    } else {
+      // 帳號不存在
+      http_response_code(401); 
+      echo json_encode(['message' => '帳號或密碼不正確。']);
     }
-}
+    //
+    mysqli_free_result($result);
+    //
+    mysqli_close($mysqli);
+    //
+  } catch (Exception $e) {
+    http_response_code(500);
+    echo json_encode(['message' => '伺服器內部錯誤，請稍後再試。']);
+    // error_log("SQL 錯誤: " . $e->getMessage());//可以記錄錯誤
+    //
+    // 在發生錯誤時，確保連線關閉
+    if (isset($mysqli)) {
+      mysqli_close($mysqli);
+    }
+  }
+?>
