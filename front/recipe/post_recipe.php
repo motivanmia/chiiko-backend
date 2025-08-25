@@ -31,14 +31,20 @@
     }
 
     // SQL 操作...
-$sql = "INSERT INTO `recipe`
-(`user_id`, `manager_id`, `recipe_category_id`, `name`, `content`, `serving`, `image`, `cooked_time`, `status`, `tag`, `created_at`)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())";
-    $types = "iiisssssis";
+    // ⭐️ 核心修改 1: 在 INSERT 語句的欄位列表中加入 `views`
+    $sql = "INSERT INTO `recipe`
+(`user_id`, `manager_id`, `recipe_category_id`, `name`, `content`, `serving`, `image`, `cooked_time`, `status`, `tag`, `views`, `created_at`)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())";
+
+    // ⭐️ 核心修改 2: 在類型字串的末尾為 views 加上 'i' (integer)
+    $types = "iiisssssisi";
+
+    // ⭐️ 核心修改 3: 在參數陣列中加入 views 的值，如果前端沒傳就預設為 0
     $params = [
       $user_id, $manager_id, $recipe_category_id,
       $data['name'] ?? '', $data['content'] ?? '', $data['serving'] ?? null,
-      $data['image'] ?? '', $data['cooked_time'] ?? null, $status_code, $data['tag'] ?? ''
+      $data['image'] ?? '', $data['cooked_time'] ?? null, $status_code, $data['tag'] ?? '',
+      $toIntOrNull($data['views'] ?? 0)
     ];
 
     $stmt = $mysqli->prepare($sql);
@@ -59,6 +65,8 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())";
     $code = is_numeric($code) && $code >= 400 && $code < 600 ? $code : 500;
     send_json([
       'status'  => 'fail',
+      // 在開發階段可以回傳更詳細的錯誤，例如 $e->getMessage()
+      // 正式上線時建議使用通用訊息，避免洩漏伺服器內部資訊
       'message' => $e->getMessage() ?: '伺服器發生未預期錯誤',
     ], $code);
   } finally {
