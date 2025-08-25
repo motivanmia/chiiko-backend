@@ -92,8 +92,8 @@ try {
             COALESCE(u.name, m.name) AS author_name,
             COALESCE(u.image, NULL) AS author_image
         FROM recipe_comment c
-        LEFT JOIN users u ON c.member_id = u.user_id
-        LEFT JOIN managers m ON c.member_id = m.manager_id
+        LEFT JOIN users u ON c.user_id = u.user_id
+        LEFT JOIN managers m ON c.user_id = m.manager_id
         WHERE c.recipe_id = $safe_recipe_id AND c.parent_id IS NULL
         ORDER BY c.created_at ASC
     ";
@@ -116,8 +116,8 @@ try {
                 COALESCE(u.name, m.name) AS author_name,
                 COALESCE(u.image, NULL) AS author_image
             FROM recipe_comment c
-            LEFT JOIN users u ON c.member_id = u.user_id
-            LEFT JOIN managers m ON c.member_id = m.manager_id
+            LEFT JOIN users u ON c.user_id = u.user_id
+            LEFT JOIN managers m ON c.user_id = m.manager_id
             WHERE c.parent_id = $comment_id
             ORDER BY c.created_at ASC
         ";

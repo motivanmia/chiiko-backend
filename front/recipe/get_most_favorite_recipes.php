@@ -11,7 +11,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
 }
 
 try {
-    $query = "SELECT r.recipe_id, r.name, r.image, COUNT(f.member_id) AS favorite_count
+    $query = "SELECT r.recipe_id, r.name, r.image, COUNT(f.user_id) AS favorite_count
               FROM recipe AS r
               LEFT JOIN recipe_favorite AS f ON r.recipe_id = f.recipe_id
               GROUP BY r.recipe_id

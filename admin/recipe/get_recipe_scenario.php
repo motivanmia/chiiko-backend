@@ -3,6 +3,7 @@ require_once __DIR__ . '/../../common/conn.php';
 require_once __DIR__ . '/../../common/cors.php';
 require_once __DIR__ . '/../../common/config.php';
 
+
 // 設定字符集為 UTF-8
 mysqli_set_charset($mysqli, "utf8");
 
