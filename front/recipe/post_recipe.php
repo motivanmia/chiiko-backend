@@ -2,46 +2,51 @@
 //新增食譜功能
   require_once __DIR__ . '/../../common/cors.php';
   require_once __DIR__ . '/../../common/config.php';
-  require_once __DIR__ . '/../../common/functions.php';
+  require_once __DIR__ . '/../../common/functions.php'; 
   require_once __DIR__ . '/../../common/conn.php';
+
+  session_start();
 
   try {
     require_method('POST');
+
+    $loggedInUser = checkUserLoggedIn();
+    if (!$loggedInUser) {
+      throw new Exception('使用者未登入，禁止操作', 401);
+    }
+
+
     $data = get_json_input();
 
-    // 數據清洗與準備...
     $toIntOrNull = fn($v) => (isset($v) && $v !== '' && is_numeric($v)) ? (int)$v : null;
     $toStrOrNull = fn($v) => (isset($v) && $v !== '') ? (string)$v : null;
 
-    $user_id            = $toIntOrNull($data['user_id'] ?? null);
-    $manager_id          = $toIntOrNull($data['manager_id'] ?? null);
+    $user_id            = $loggedInUser['user_id']; 
+    $manager_id          = $toIntOrNull($data['manager_id'] ?? null); 
     $recipe_category_id = $toIntOrNull($data['recipe_category_id'] ?? null);
-    // ... 其他欄位 ...
+    
     $status_code        = is_numeric($data['status'] ?? 3) && in_array((int)($data['status'] ?? 3), [0,1,2,3], true) ? (int)$data['status'] : 3;
 
-    // 欄位驗證...
+    // 欄位驗證
     if ($status_code === 0 || $status_code === 1) {
       $errors = [];
       if (empty(trim($data['name'] ?? ''))) $errors[] = '請輸入食譜名稱';
-      // ... 其他驗證 ...
       if (!empty($errors)) {
-        // 直接拋出一個例外，讓下面的 catch 區塊來處理
         throw new Exception('驗證失敗', 400); 
       }
     }
 
-    // SQL 操作...
-    // ⭐️ 核心修改 1: 在 INSERT 語句的欄位列表中加入 `views`
+    // SQL 操作
     $sql = "INSERT INTO `recipe`
 (`user_id`, `manager_id`, `recipe_category_id`, `name`, `content`, `serving`, `image`, `cooked_time`, `status`, `tag`, `views`, `created_at`)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())";
 
-    // ⭐️ 核心修改 2: 在類型字串的末尾為 views 加上 'i' (integer)
     $types = "iiisssssisi";
 
-    // ⭐️ 核心修改 3: 在參數陣列中加入 views 的值，如果前端沒傳就預設為 0
     $params = [
-      $user_id, $manager_id, $recipe_category_id,
+      $user_id, 
+      $manager_id, 
+      $recipe_category_id,
       $data['name'] ?? '', $data['content'] ?? '', $data['serving'] ?? null,
       $data['image'] ?? '', $data['cooked_time'] ?? null, $status_code, $data['tag'] ?? '',
       $toIntOrNull($data['views'] ?? 0)
@@ -60,17 +65,13 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())";
     ], 201);
 
   } catch (Throwable $e) {
-    // 統一的錯誤處理出口
-    $code = $e->getCode() ?: 500; // 如果沒有 code，就用 500
+    $code = $e->getCode() ?: 500;
     $code = is_numeric($code) && $code >= 400 && $code < 600 ? $code : 500;
     send_json([
       'status'  => 'fail',
-      // 在開發階段可以回傳更詳細的錯誤，例如 $e->getMessage()
-      // 正式上線時建議使用通用訊息，避免洩漏伺服器內部資訊
       'message' => $e->getMessage() ?: '伺服器發生未預期錯誤',
     ], $code);
   } finally {
-    // 確保資料庫連線總是會被關閉
     if (isset($mysqli)) {
       $mysqli->close();
     }
