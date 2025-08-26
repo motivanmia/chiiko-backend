@@ -4,40 +4,28 @@ require_once __DIR__ . '/../../common/cors.php';
 require_once __DIR__ . '/../../common/config.php';
 
 header('Content-Type: application/json');
-global $mysqli;
+global $mysqli; 
 
 try {
+
     $request_data = $_GET;
 
-    if (!isset($request_data['q'])) {
-        http_response_code(400); 
-        echo json_encode(['success' => false, 'message' => 'Query parameter is missing.']);
-        return;
-    }
 
+    if (!isset($request_data['q'])) {
+    http_response_code(400); 
+    echo json_encode(['success' => false, 'message' => 'Query parameter is missing.']);
+    return;
+}
+
+    // $searchQuery = urldecode($_POST['q']);
     $searchQuery = $request_data['q'];
     
     $escapedSearchQuery = $mysqli->real_escape_string($searchQuery);
     
-    // 使用 LEFT JOIN 和 GROUP BY 來計算每個食譜的收藏數
-    $sql = "SELECT 
-                r.recipe_id, 
-                r.name, 
-                r.cooked_time, 
-                r.image,
-                r.tag,
-                COUNT(fr.recipe_id) AS favorite_count
-            FROM 
-                recipe AS r
-            LEFT JOIN 
-                recipe_favorite AS fr ON r.recipe_id = fr.recipe_id
-            WHERE 
-                r.name LIKE '%{$escapedSearchQuery}%'
-                OR r.tag LIKE '%{$escapedSearchQuery}%'
-            GROUP BY 
-                r.recipe_id
-            ORDER BY 
-                favorite_count DESC";
+    $sql = "SELECT recipe_id, name, cooked_time, image
+            FROM recipe
+            WHERE name LIKE '%{$escapedSearchQuery}%'
+            OR tag LIKE '%{$escapedSearchQuery}%'";
     
     $result = $mysqli->query($sql);
     
@@ -57,7 +45,7 @@ try {
 
 } catch (mysqli_sql_exception $e) {
     http_response_code(500);
-    echo json_encode(['success' => false, 'message' => 'Database query failed.', 'error_detail' => $e->getMessage()]);
+    echo json_encode(['success' => false, 'message' => 'Database q failed.', 'error_detail' => $e->getMessage()]);
 
 } finally {
     if (isset($mysqli)) {

@@ -8,7 +8,7 @@
   // 檢查是否登入
   $user = checkUserLoggedIn();
   
-  if (!$user) {
+  if (!$user || !isset($user['user_id'])) {
     send_json([
       'status' => 'fail',
       'message' => '尚未登入'
@@ -70,10 +70,31 @@
     );
     db_query($mysqli, $insert_sql);
   }
-  
-  // 回傳成功訊息
+
+  // 取出最新的購物車資料（JOIN products）
+  $cart_sql = sprintf(
+    "SELECT 
+      c.product_id,
+      p.name AS product_name,
+      p.unit_price,
+      p.preview_image,
+      c.quantity,
+      c.created_at
+    FROM carts c
+    JOIN products p ON c.product_id = p.product_id
+    WHERE c.user_id = %d AND c.product_id = %d",
+    $user_id,
+    $product_id
+  );
+
+  $cart_result = db_query($mysqli, $cart_sql);
+  $cart_item = $cart_result->fetch_assoc();
+
+  // 回傳成功訊息 + 新增的商品資料
   send_json([
     'status' => 'success',
-    'message' => '購物車新增成功'
+    'message' => '購物車新增成功',
+    'data' => $cart_item
   ]);
+
 ?>

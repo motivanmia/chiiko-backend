@@ -1,5 +1,7 @@
 <?php
-// /front/recipe/get_recipe_comments.php (最終校驗版)
+// =================================================================
+//  API: 取得巢狀留言列表 (第1步修正：回傳完整 URL)
+// =================================================================
 
 require_once __DIR__ . '/../../common/conn.php';
 require_once __DIR__ . '/../../common/cors.php';
@@ -11,9 +13,7 @@ if (empty($recipe_id)) {
     send_json(['status' => 'error', 'message' => 'Missing recipe_id'], 400); 
 }
 
-// 【✅ 核心校驗 ✅】
-// 確保 WHERE 條件中包含了 rc.status = 0，
-// 這會自動過濾掉所有被管理員設定為「隱藏」(status = 1) 的留言。
+// SQL 查詢 (保持不變)
 $sql = "SELECT 
             rc.comment_id, rc.user_id, rc.parent_id, rc.content, rc.image, rc.created_at,
             u.name AS member_name, 
@@ -24,29 +24,29 @@ $sql = "SELECT
         ORDER BY rc.created_at ASC";
 
 $stmt = $mysqli->prepare($sql);
-if (!$stmt) {
-    send_json(['status' => 'error', 'message' => '資料庫查詢失敗: ' . $mysqli->error], 500);
-}
-
 $stmt->bind_param('i', $recipe_id);
 $stmt->execute();
 $all_comments = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
 $stmt->close();
 
-// 為所有圖片路徑加上完整的 URL 前綴 (保持不變)
-$base_url = 'http://localhost:8888';
-$uploads_path = '/uploads/';
+// 【✅ 核心修正 ✅】
+// 為所有圖片路徑加上完整的 URL 前綴
+$base_url = 'http://localhost:8888'; // 您的後端伺服器網址
+$uploads_path = '/uploads/';         // 您的圖片上傳資料夾
+
 foreach ($all_comments as &$comment) {
+    // 處理留言者頭像
     if (!empty($comment['member_avatar']) && !filter_var($comment['member_avatar'], FILTER_VALIDATE_URL)) {
         $comment['member_avatar'] = $base_url . $uploads_path . $comment['member_avatar'];
     }
+    // 處理留言附圖
     if (!empty($comment['image']) && !filter_var($comment['image'], FILTER_VALIDATE_URL)) {
         $comment['image'] = $base_url . $uploads_path . $comment['image'];
     }
 }
-unset($comment);
+unset($comment); // 斷開最後一個元素的引用
 
-// --- 巢狀結構處理 (保持不變) ---
+// --- 巢狀結構處理邏輯 (保持不變) ---
 $threaded = []; $map = [];
 foreach ($all_comments as $c) { $c['replies'] = []; $map[$c['comment_id']] = $c; }
 foreach ($map as $id => &$c) {

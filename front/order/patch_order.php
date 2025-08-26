@@ -54,6 +54,14 @@
   $sql_update = "UPDATE orders SET order_status = {$order_status_key} WHERE order_id = {$order_id}";
   db_query($mysqli, $sql_update);
 
+  create_notification($mysqli, [
+    'receiver_id' => $user_id,
+    'order_id'    => $order_id,
+    'type'        => 22,
+    'title'       => '訂單已取消',
+    'content'     => "您的訂單 #{$order_id} 已取消，如有疑問請聯繫客服。"
+  ]);
+
   send_json([
     'status' => 'success',
     'message' => '訂單狀態已更新',

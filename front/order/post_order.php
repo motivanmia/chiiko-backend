@@ -2,6 +2,7 @@
   require_once __DIR__ . '/../../common/conn.php';
   require_once __DIR__ . '/../../common/cors.php';
   require_once __DIR__ . '/../../common/functions.php';
+  require_once __DIR__ . '/../../common/ecpay.php';
 
   require_method('POST');
 
@@ -44,10 +45,10 @@ if ($payment_type_str === 'card') {
   send_json(['status' => 'fail', 'message' => '付款方式錯誤'], 400);
 }
 
-// 轉換收件地點：mainIsland → 0, outlyingIslands → 2
+// 轉換收件地點：mainIsland → 0, outlyingIslands → 1
 $location_map = [
     'mainIsland'     => 0,
-    'outlyingIslands'=> 2
+    'outlyingIslands'=> 1
 ];
 if (!isset($location_map[$payment_location_str])) {
     send_json(['status' => 'fail', 'message' => '收件地點錯誤'], 400);
@@ -55,8 +56,7 @@ if (!isset($location_map[$payment_location_str])) {
 $payment_location = $location_map[$payment_location_str];
 
 // 撈購物車商品
-$sql_cart = "
-  SELECT c.product_id, c.quantity, p.name, p.unit_price
+$sql_cart = "SELECT c.product_id, c.quantity, p.name, p.unit_price
   FROM carts c
   JOIN products p ON c.product_id = p.product_id
   WHERE c.user_id = {$user_id}
@@ -70,8 +70,10 @@ if (empty($cart_items)) {
 
 // 計算金額
 $total_price = 0;
+$item_names = [];
 foreach ($cart_items as $item) {
   $total_price += $item['unit_price'] * $item['quantity'];
+  $item_names[] = $item['name'];
 }
 
 
@@ -125,6 +127,51 @@ foreach ($cart_items as $item) {
 // 清空購物車
 $sql_clear = "DELETE FROM carts WHERE user_id = {$user_id}";
 db_query($mysqli, $sql_clear);
+
+create_notification($mysqli, [
+    'receiver_id' => $user_id,
+    'order_id'    => $order_id,
+    'type'        => 19,
+    'title'       => '訂單已建立',
+    'content'     => "您的訂單 #{$order_id} 已建立，我們會盡快處理！"
+  ]);
+
+if ($payment_type === 0) {
+  // $MerchantID = "3002607";
+  // $HashKey = "pwFHCqoQZGmho4w6";
+  // $HashIV = "EkRm7iFT261dpevs";
+  // $TradeNo = "ORD" . strtoupper(bin2hex(random_bytes(4))); // 20碼內
+
+  $ecpay_params = [
+    'MerchantID'        => MERCHANT_ID,
+    'MerchantTradeNo'   => $tracking_number,
+    'MerchantTradeDate' => date("Y/m/d H:i:s"),
+    'PaymentType'       => 'aio',
+    'TotalAmount'       => $final_price,
+    'TradeDesc'         => '訂單測試',
+    'ItemName'          => implode('#', $item_names),
+    'ReturnURL'         => BASE_URL . '/front/order/ecpay_callback.php',
+    'ChoosePayment'     => 'Credit',
+    'ClientBackURL'     => FRONT_BASE_URL . '/order-success?order_id=' . $order_id,
+    'EncryptType'       => 1
+  ];
+
+  // 計算檢查碼
+  $ecpay_params['CheckMacValue'] = generateCheckMacValue($ecpay_params, HASH_KEY, HASH_IV);
+
+  send_json([
+    'status' => 'success',
+    'message' => '訂單建立成功',
+    'data' => [
+      'order_id' => $order_id,
+      'tracking_number' => $tracking_number,
+      'final_price' => $final_price,
+      'freight' => $freight,
+      'payment_url' => 'https://payment-stage.ecpay.com.tw/Cashier/AioCheckOut/V5',
+      'params' => $ecpay_params
+    ]
+  ]);
+}
 
 // 回傳成功
 send_json([

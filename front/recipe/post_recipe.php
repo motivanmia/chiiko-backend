@@ -1,35 +1,56 @@
 <?php
-require_once __DIR__ . '/../../common/cors.php';
-require_once __DIR__ . '/../../common/config.php';
-require_once __DIR__ . '/../../common/functions.php';
-require_once __DIR__ . '/../../common/conn.php';
+//新增食譜功能
+  require_once __DIR__ . '/../../common/cors.php';
+  require_once __DIR__ . '/../../common/config.php';
+  require_once __DIR__ . '/../../common/functions.php'; 
+  require_once __DIR__ . '/../../common/conn.php';
 
-try {
-    // 檢查請求方法是否為 POST
+  session_start();
+
+  try {
     require_method('POST');
+
+    $loggedInUser = checkUserLoggedIn();
+    if (!$loggedInUser) {
+      throw new Exception('使用者未登入，禁止操作', 401);
+    }
+
+
     $data = get_json_input();
 
-    if (session_status() == PHP_SESSION_NONE) {
-        session_start();
-    }
-    $user_id = $_SESSION['user_id'] ?? null;
+    $toIntOrNull = fn($v) => (isset($v) && $v !== '' && is_numeric($v)) ? (int)$v : null;
+    $toStrOrNull = fn($v) => (isset($v) && $v !== '') ? (string)$v : null;
 
-    if (!$user_id) {
-        throw new Exception('使用者未登入', 401);
+    $user_id            = $loggedInUser['user_id']; 
+    $manager_id          = $toIntOrNull($data['manager_id'] ?? null); 
+    $recipe_category_id = $toIntOrNull($data['recipe_category_id'] ?? null);
+    
+    $status_code        = is_numeric($data['status'] ?? 3) && in_array((int)($data['status'] ?? 3), [0,1,2,3], true) ? (int)$data['status'] : 3;
+
+    // 欄位驗證
+    if ($status_code === 0 || $status_code === 1) {
+      $errors = [];
+      if (empty(trim($data['name'] ?? ''))) $errors[] = '請輸入食譜名稱';
+      if (!empty($errors)) {
+        throw new Exception('驗證失敗', 400); 
+      }
     }
 
-    // 變數初始化與嚴謹的資料驗證
-    $name = $data['name'] ?? '';
-    $content = $data['content'] ?? '';
-    $status_code = $data['status'] ?? 3;
-    $manager_id = $data['manager_id'] ?? null;
-    $recipe_category_id = $data['recipe_category_id'] ?? null;
-    $serving = $data['serving'] ?? null;
-    $image = $data['image'] ?? null;
-    $cooked_time = $data['cooked_time'] ?? null;
-    $tag = $data['tag'] ?? null;
-    $steps = $data['steps'] ?? [];
-    $ingredients = $data['ingredients'] ?? [];
+    // SQL 操作
+    $sql = "INSERT INTO `recipe`
+(`user_id`, `manager_id`, `recipe_category_id`, `name`, `content`, `serving`, `image`, `cooked_time`, `status`, `tag`, `views`, `created_at`)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())";
+
+    $types = "iiisssssisi";
+
+    $params = [
+      $user_id, 
+      $manager_id, 
+      $recipe_category_id,
+      $data['name'] ?? '', $data['content'] ?? '', $data['serving'] ?? null,
+      $data['image'] ?? '', $data['cooked_time'] ?? null, $status_code, $data['tag'] ?? '',
+      $toIntOrNull($data['views'] ?? 0)
+    ];
 
     if ($status_code == 0 || $status_code == 1) {
         if (empty($name)) {
@@ -165,20 +186,15 @@ try {
         'message' => '食譜新增成功！',
         'recipe_id' => $new_recipe_id
     ], 201);
-    
-} catch (Throwable $e) {
-    // --- 錯誤處理：回滾交易 ---
-    if (isset($mysqli)) {
-        $mysqli->rollback();
-    }
-    
+
+  } catch (Throwable $e) {
     $code = $e->getCode() ?: 500;
     $code = is_numeric($code) && $code >= 400 && $code < 600 ? $code : 500;
     send_json([
         'status' => 'fail',
         'message' => $e->getMessage() ?: '伺服器發生未預期錯誤',
     ], $code);
-} finally {
+  } finally {
     if (isset($mysqli)) {
         $mysqli->close();
     }
