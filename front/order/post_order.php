@@ -128,6 +128,14 @@ foreach ($cart_items as $item) {
 $sql_clear = "DELETE FROM carts WHERE user_id = {$user_id}";
 db_query($mysqli, $sql_clear);
 
+create_notification($mysqli, [
+    'receiver_id' => $user_id,
+    'order_id'    => $order_id,
+    'type'        => 19,
+    'title'       => '訂單已建立',
+    'content'     => "您的訂單 #{$order_id} 已建立，我們會盡快處理！"
+  ]);
+
 if ($payment_type === 0) {
   // $MerchantID = "3002607";
   // $HashKey = "pwFHCqoQZGmho4w6";
