@@ -18,7 +18,7 @@
     // 處理單一商品查詢
     $sql = "SELECT * FROM products WHERE product_id = '" . $productId . "'";
     $result = db_query($mysqli, $sql);
-    $data = $result->fetch_all();
+    $data = $result->fetch_all(MYSQLI_ASSOC);
   } else{
     // 商品列表查詢
     $sql = "SELECT * FROM products WHERE 1";
