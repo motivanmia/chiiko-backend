@@ -21,14 +21,49 @@ try {
   }
   $id = (int)$payload['ingredient_id'];
 
+  $origin = null;
+  {
+    $q = $mysqli->prepare("SELECT ingredients_category_id, name FROM `ingredients` WHERE `ingredient_id` = ? LIMIT 1");
+    $q->bind_param('i', $id);
+    $q->execute();
+    $origin = $q->get_result()->fetch_assoc();
+    $q->close();
+    if (!$origin) {
+      send_json(['status'=>'fail','message'=>'找不到該食材'], 404);
+    }
+  }
+
   // 正規化工具
   $toJson = function ($val) {
     if (is_array($val))  return json_encode($val, JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);
     if (is_string($val)) return json_encode([$val], JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);
-    return null;
+    return null; 
   };
 
-  // 動態組 UPDATE
+  if (array_key_exists('name', $payload)) {
+    $newName = trim((string)$payload['name']);
+    if ($newName === '') {
+      send_json(['status'=>'fail','message'=>'name 不可為空','field'=>'name'], 400);
+    }
+
+    $dupSql = "SELECT 1 FROM `ingredients` WHERE `name` = ? AND `ingredient_id` <> ? LIMIT 1";
+    $dupStmt = $mysqli->prepare($dupSql);
+    $dupStmt->bind_param("si", $newName, $id);
+
+    $dupStmt->execute();
+    $dupStmt->store_result();
+    if ($dupStmt->num_rows > 0) {
+      $dupStmt->close();
+      send_json([
+        'status'  => 'fail',
+        'message' => '名稱已存在，請更換 name',
+        'field'   => 'name'
+      ], 409);
+    }
+    $dupStmt->close();
+  }
+
+  // —— 動態組 UPDATE —— 
   $fields = [];
   $types  = '';
   $params = [];
@@ -41,7 +76,7 @@ try {
   if (array_key_exists('name', $payload)) {
     $fields[] = '`name` = ?';
     $types   .= 's';
-    $params[] = (string)$payload['name'];
+    $params[] = trim((string)$payload['name']);
   }
   if (array_key_exists('image', $payload)) {
     $fields[] = '`image` = ?';
@@ -68,7 +103,6 @@ try {
     send_json(['status'=>'success','message'=>'沒有任何更新','updated'=>0],200);
   }
 
-  // 組 UPDATE SQL
   $sql = "UPDATE `ingredients` SET " . implode(', ', $fields) . " WHERE `ingredient_id` = ?";
   $types .= 'i';
   $params[] = $id;
@@ -79,9 +113,8 @@ try {
   $affected = $stmt->affected_rows;
   $stmt->close();
 
-  // 回查更新後的資料
-  $selectSql = "SELECT * FROM `ingredients` WHERE `ingredient_id` = " . (int)$id;
-  $res = db_query($mysqli, $selectSql);
+  // 回查
+  $res = db_query($mysqli, "SELECT * FROM `ingredients` WHERE `ingredient_id` = " . (int)$id);
   $row = $res->fetch_assoc() ?: [];
 
   $mysqli->close();
@@ -93,6 +126,19 @@ try {
     'data'    => $row,
   ], 200);
 
+} catch (mysqli_sql_exception $e) {
+  if ($e->getCode() === 1062) {
+    send_json([
+      'status'  => 'fail',
+      'message' => '名稱已存在，請更換 name',
+      'field'   => 'name'
+    ], 409);
+  }
+  send_json([
+    'status'  => 'fail',
+    'message' => 'Server error',
+    'error'   => $e->getMessage(),
+  ], 500);
 } catch (Throwable $e) {
   send_json([
     'status'  => 'fail',
