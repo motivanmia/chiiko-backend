@@ -29,7 +29,7 @@
           JOIN
             `recipe` AS r ON rf.recipe_id = r.recipe_id
           WHERE
-            rf.member_id = '$escaped_user_id'";
+            rf.user_id = '$escaped_user_id'";
 
           $result = $mysqli->query($query);
 

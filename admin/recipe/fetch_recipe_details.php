@@ -1,17 +1,11 @@
 <?php
-//食譜詳細按紐點選撈食譜id相關所有內文資料用
-
-ini_set('display_errors', 1);
-ini_set('display_startup_errors', 1);
-error_reporting(E_ALL);
-
 require_once __DIR__ . '/../../common/conn.php';
 require_once __DIR__ . '/../../common/cors.php';
 require_once __DIR__ . '/../../common/functions.php';
+require_once __DIR__ . '/../../common/config.php';
 
 // 設定回應標頭為 JSON
 header('Content-Type: application/json');
-
 
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     try {
@@ -22,15 +16,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             exit();
         }
 
+        // 轉換為整數，確保安全
         $recipe_id = (int)$_GET['recipe_id'];
 
+        // 使用 mysqli_query 查詢食譜主資料
+        $sql_recipe = "SELECT * FROM `recipe` WHERE `recipe_id` = '$recipe_id'";
+        $result_recipe = mysqli_query($mysqli, $sql_recipe);
 
-        $stmt_recipe = $mysqli->prepare("SELECT * FROM `recipe` WHERE `recipe_id` = ?");
-        $stmt_recipe->bind_param("i", $recipe_id);
-        $stmt_recipe->execute();
-        $result_recipe = $stmt_recipe->get_result();
-        $recipe_data = $result_recipe->fetch_assoc();
-        $stmt_recipe->close();
+        // 檢查查詢是否成功
+        if (!$result_recipe) {
+            throw new Exception('查詢食譜資料失敗: ' . mysqli_error($mysqli));
+        }
+
+        $recipe_data = mysqli_fetch_assoc($result_recipe);
 
         // 如果找不到主食譜，就直接回傳錯誤
         if (!$recipe_data) {
@@ -39,8 +37,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             exit();
         }
 
-        // ✅ --- 2. 查詢相關的食材項目 (已修正) ---
-        // 使用 LEFT JOIN，根據 ingredient_id 去 `ingredients` 表中取得食材的 `name`
+        // ✅ --- 2. 查詢相關的食材項目 ---
         $sql_ingredients = "
             SELECT 
                 ii.serving, 
@@ -50,29 +47,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             LEFT JOIN 
                 `ingredients` AS i ON ii.ingredient_id = i.ingredient_id
             WHERE 
-                ii.recipe_id = ?
+                ii.recipe_id = '$recipe_id'
         ";
+        $result_ingredients = mysqli_query($mysqli, $sql_ingredients);
+
+        if (!$result_ingredients) {
+            throw new Exception('查詢食材資料失敗: ' . mysqli_error($mysqli));
+        }
         
-        $stmt_ingredients = $mysqli->prepare($sql_ingredients);
-        $stmt_ingredients->bind_param("i", $recipe_id);
-        $stmt_ingredients->execute();
-        $result_ingredients = $stmt_ingredients->get_result();
         $ingredients = [];
-        while ($row = $result_ingredients->fetch_assoc()) {
+        while ($row = mysqli_fetch_assoc($result_ingredients)) {
             $ingredients[] = $row;
         }
-        $stmt_ingredients->close();
 
-        // --- 3. 查詢相關的步驟 (維持不變) ---
-        $stmt_steps = $mysqli->prepare("SELECT * FROM `steps` WHERE `recipe_id` = ? ORDER BY `order` ASC");
-        $stmt_steps->bind_param("i", $recipe_id);
-        $stmt_steps->execute();
-        $result_steps = $stmt_steps->get_result();
+        // --- 3. 查詢相關的步驟 ---
+        $sql_steps = "SELECT * FROM `steps` WHERE `recipe_id` = '$recipe_id' ORDER BY `order` ASC";
+        $result_steps = mysqli_query($mysqli, $sql_steps);
+        
+        if (!$result_steps) {
+            throw new Exception('查詢步驟資料失敗: ' . mysqli_error($mysqli));
+        }
+
         $steps = [];
-        while ($row = $result_steps->fetch_assoc()) {
+        while ($row = mysqli_fetch_assoc($result_steps)) {
             $steps[] = $row;
         }
-        $stmt_steps->close();
 
         // --- 組合所有資料 (維持不變) ---
         $full_recipe_details = $recipe_data;

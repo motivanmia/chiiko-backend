@@ -19,7 +19,7 @@ try {
         }
         unset($category);
         
-        echo json_encode($categories);
+        echo json_encode(['success' => true, 'data' => $categories]);
     } else {
         http_response_code(500);
         echo json_encode(['error' => '查詢資料失敗: ' . $mysqli->error]);
