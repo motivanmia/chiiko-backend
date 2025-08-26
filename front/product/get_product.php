@@ -10,6 +10,7 @@
   $type = isset($_GET['type']) ? $_GET['type'] : null;
   $categoryId = isset($_GET['product_category_id']) ? $_GET['product_category_id'] : null;
   $productId = isset($_GET['product_id']) ? $_GET['product_id'] : null;
+  $getAll = isset($_GET['all']) ? $_GET['all'] : null;
 
   $data = null;
 
@@ -17,6 +18,11 @@
   if ($productId !== null) {
     // 處理單一商品查詢
     $sql = "SELECT * FROM products WHERE product_id = '" . $productId . "'";
+    $result = db_query($mysqli, $sql);
+    $data = $result->fetch_all(MYSQLI_ASSOC);
+  } else if ($getAll !== null && $getAll === 'true') {
+    // 獲取所有商品
+    $sql = "SELECT * FROM products";
     $result = db_query($mysqli, $sql);
     $data = $result->fetch_all(MYSQLI_ASSOC);
   } else{
