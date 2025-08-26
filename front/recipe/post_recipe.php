@@ -1,56 +1,35 @@
 <?php
-//新增食譜功能
-  require_once __DIR__ . '/../../common/cors.php';
-  require_once __DIR__ . '/../../common/config.php';
-  require_once __DIR__ . '/../../common/functions.php'; 
-  require_once __DIR__ . '/../../common/conn.php';
+require_once __DIR__ . '/../../common/cors.php';
+require_once __DIR__ . '/../../common/config.php';
+require_once __DIR__ . '/../../common/functions.php';
+require_once __DIR__ . '/../../common/conn.php';
 
-  session_start();
-
-  try {
+try {
+    // 檢查請求方法是否為 POST
     require_method('POST');
-
-    $loggedInUser = checkUserLoggedIn();
-    if (!$loggedInUser) {
-      throw new Exception('使用者未登入，禁止操作', 401);
-    }
-
-
     $data = get_json_input();
 
-    $toIntOrNull = fn($v) => (isset($v) && $v !== '' && is_numeric($v)) ? (int)$v : null;
-    $toStrOrNull = fn($v) => (isset($v) && $v !== '') ? (string)$v : null;
+    if (session_status() == PHP_SESSION_NONE) {
+        session_start();
+    }
+    $user_id = $_SESSION['user_id'] ?? null;
 
-    $user_id            = $loggedInUser['user_id']; 
-    $manager_id          = $toIntOrNull($data['manager_id'] ?? null); 
-    $recipe_category_id = $toIntOrNull($data['recipe_category_id'] ?? null);
-    
-    $status_code        = is_numeric($data['status'] ?? 3) && in_array((int)($data['status'] ?? 3), [0,1,2,3], true) ? (int)$data['status'] : 3;
-
-    // 欄位驗證
-    if ($status_code === 0 || $status_code === 1) {
-      $errors = [];
-      if (empty(trim($data['name'] ?? ''))) $errors[] = '請輸入食譜名稱';
-      if (!empty($errors)) {
-        throw new Exception('驗證失敗', 400); 
-      }
+    if (!$user_id) {
+        throw new Exception('使用者未登入', 401);
     }
 
-    // SQL 操作
-    $sql = "INSERT INTO `recipe`
-(`user_id`, `manager_id`, `recipe_category_id`, `name`, `content`, `serving`, `image`, `cooked_time`, `status`, `tag`, `views`, `created_at`)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())";
-
-    $types = "iiisssssisi";
-
-    $params = [
-      $user_id, 
-      $manager_id, 
-      $recipe_category_id,
-      $data['name'] ?? '', $data['content'] ?? '', $data['serving'] ?? null,
-      $data['image'] ?? '', $data['cooked_time'] ?? null, $status_code, $data['tag'] ?? '',
-      $toIntOrNull($data['views'] ?? 0)
-    ];
+    // 變數初始化與嚴謹的資料驗證
+    $name = $data['name'] ?? '';
+    $content = $data['content'] ?? '';
+    $status_code = $data['status'] ?? 3;
+    $manager_id = $data['manager_id'] ?? null;
+    $recipe_category_id = $data['recipe_category_id'] ?? null;
+    $serving = $data['serving'] ?? null;
+    $image = $data['image'] ?? null;
+    $cooked_time = $data['cooked_time'] ?? null;
+    $tag = $data['tag'] ?? null;
+    $steps = $data['steps'] ?? [];
+    $ingredients = $data['ingredients'] ?? [];
 
     if ($status_code == 0 || $status_code == 1) {
         if (empty($name)) {
@@ -110,65 +89,24 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())";
         }
     }
 
-    // 3. 儲存食材到 `ingredient_item` 資料表（包含模糊比對）
+    // 3. 儲存食材到 `ingredient_item` 資料表
     if (!empty($ingredients)) {
-        // 從資料庫中一次性讀取所有現有的食材名稱和 ID
-        $all_db_ingredients = [];
-        $ingredients_sql = "SELECT `ingredient_id`, `name` FROM `ingredients`";
-        $result_ingredients_db = $mysqli->query($ingredients_sql);
-        if ($result_ingredients_db) {
-            while ($row = $result_ingredients_db->fetch_assoc()) {
-                $all_db_ingredients[] = $row;
-            }
-            $result_ingredients_db->free();
-        }
-
-        // 設置相似度門檻，你可以根據需要調整
-        $similarity_threshold = 50;
-
         foreach ($ingredients as $item) {
             $user_ingredient_name = trim($item['name'] ?? null);
-            $serving = $item['amount'] ?? null; // **修正: 前端傳送的是 'amount'**
+            $amount = $item['amount'] ?? null;
             
             if (empty($user_ingredient_name)) {
                 continue;
             }
             
-            $db_ingredient_id = 'NULL';
-            $final_ingredient_name = $user_ingredient_name;
-
-            $best_match_id = null;
-            $highest_similarity = 0;
-
-            foreach ($all_db_ingredients as $db_item) {
-                $db_name = trim($db_item['name']);
-                $similarity = 0;
-                similar_text($user_ingredient_name, $db_name, $similarity);
-
-                if ($similarity > $highest_similarity && $similarity >= $similarity_threshold) {
-                    $highest_similarity = $similarity;
-                    $best_match_id = (int)$db_item['ingredient_id'];
-                    $final_ingredient_name = $db_name;
-                }
-            }
-            
-            if ($best_match_id !== null) {
-                $db_ingredient_id = $best_match_id;
-            }
-            
-            $clean_final_name = get_sql_value($final_ingredient_name, $mysqli);
-            $clean_serving = get_sql_value($serving, $mysqli);
-
-            // 如果最終名稱為空，則跳過此筆，避免寫入空資料
-            if(empty($final_ingredient_name)) {
-                continue;
-            }
+            $clean_name = get_sql_value($user_ingredient_name, $mysqli);
+            $clean_amount = get_sql_value($amount, $mysqli);
 
             $ingredient_item_sql = "INSERT INTO `ingredient_item` (`ingredient_id`, `recipe_id`, `name`, `serving`) VALUES (
-                {$db_ingredient_id},
+                NULL,
                 '{$new_recipe_id}',
-                {$clean_final_name},
-                {$clean_serving}
+                {$clean_name},
+                {$clean_amount}
             )";
             
             if (!$mysqli->query($ingredient_item_sql)) {
@@ -186,15 +124,20 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())";
         'message' => '食譜新增成功！',
         'recipe_id' => $new_recipe_id
     ], 201);
-
-  } catch (Throwable $e) {
+    
+} catch (Throwable $e) {
+    // --- 錯誤處理：回滾交易 ---
+    if (isset($mysqli)) {
+        $mysqli->rollback();
+    }
+    
     $code = $e->getCode() ?: 500;
     $code = is_numeric($code) && $code >= 400 && $code < 600 ? $code : 500;
     send_json([
         'status' => 'fail',
         'message' => $e->getMessage() ?: '伺服器發生未預期錯誤',
     ], $code);
-  } finally {
+} finally {
     if (isset($mysqli)) {
         $mysqli->close();
     }
