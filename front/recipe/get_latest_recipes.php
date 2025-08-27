@@ -23,6 +23,8 @@ try {
             users AS u ON r.user_id = u.user_id
         LEFT JOIN
             managers AS m ON r.manager_id = m.manager_id
+        Where
+            r.status = 1
         ORDER BY
             r.created_at DESC
         LIMIT 8;"; 
