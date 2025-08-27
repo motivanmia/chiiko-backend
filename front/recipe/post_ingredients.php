@@ -4,10 +4,7 @@ require_once __DIR__ . '/../../common/config.php';
 require_once __DIR__ . '/../../common/conn.php';
 require_once __DIR__ . '/../../common/functions.php';
 
-
 mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
-
-
 
 try {
   require_method('POST');
@@ -35,38 +32,7 @@ try {
     return $s;
   };
 
-  // ---- 查詢語句（一次 prepare，多次執行）----
-  // 1) 精準比對（不分大小寫）— 使用 LOWER 避免 collation 混用
-  $stmt_exact = $mysqli->prepare(
-    "SELECT ingredient_id
-       FROM ingredients
-      WHERE LOWER(name) = LOWER(?)
-      LIMIT 1"
-  );
-  if (!$stmt_exact) throw new Exception('準備精準比對語句失敗：' . $mysqli->error, 500);
-
-  // 2) 模糊比對 + 智慧排序（長度接近、出現位置前、名稱包含關鍵字優先）
-  //    全部依賴連線/欄位預設（utf8mb4_unicode_ci），避免 CAST/COLLATE 混用
-  $stmt_like_best = $mysqli->prepare(
-    "SELECT ingredient_id, name
-       FROM ingredients
-      WHERE name LIKE CONCAT('%', ?, '%')
-      ORDER BY
-        -- 名稱中有關鍵字優先
-        CASE WHEN INSTR(name, ?) > 0 THEN 0 ELSE 1 END,
-        -- 長度越接近越好
-        ABS(CHAR_LENGTH(name) - CHAR_LENGTH(?)) ASC,
-        -- 關鍵字是否包含名稱（短名優先，如『雞肉』優於『雞肉條炒飯』）
-        CASE WHEN INSTR(?, name) > 0 THEN 0 ELSE 1 END,
-        -- 出現位置越靠前越好
-        INSTR(name, ?) ASC,
-        -- 穩定排序
-        name ASC
-      LIMIT 1"
-  );
-  if (!$stmt_like_best) throw new Exception('準備模糊比對語句失敗：' . $mysqli->error, 500);
-
-  // ---- 清洗並處理每一筆食材資料 ----
+  // ---- 清洗並處理每一筆食材資料（使用 db_query，避免 get_result）----
   $clean_ingredients = [];
   foreach ($data['ingredients'] as $it) {
     $rawName = isset($it['name']) ? (string)$it['name'] : '';
@@ -79,23 +45,42 @@ try {
     $ingredient_id = null;
 
     // 1) 精準比對（不分大小寫）
-    $stmt_exact->bind_param('s', $name);
-    $stmt_exact->execute();
-    $res1 = $stmt_exact->get_result();
+    $esc = $mysqli->real_escape_string($name);
+    $sql1 = "
+      SELECT ingredient_id
+      FROM ingredients
+      WHERE LOWER(name) = LOWER('{$esc}')
+      LIMIT 1
+    ";
+    $res1 = db_query($mysqli, $sql1);
     if ($row = $res1->fetch_assoc()) {
       $ingredient_id = (int)$row['ingredient_id'];
     }
+    $res1->free(); // 釋放結果集，避免 out-of-sync
 
     // 2) 模糊比對（智慧排序取最佳一筆）
     if ($ingredient_id === null) {
-      // 依序填入六個同值參數
-      $stmt_like_best->bind_param('sssss', $name, $name, $name, $name, $name);
-      $stmt_like_best->execute();
-      $res2 = $stmt_like_best->get_result();
+      // 需要重複使用關鍵字的地方全部用同一個已跳脫的字串
+      // name LIKE、INSTR(name, ?)、INSTR(?, name) 等等
+      $escLike = $esc; // 同一份已跳脫字串即可
+      $sql2 = "
+        SELECT ingredient_id, name
+        FROM ingredients
+        WHERE name LIKE CONCAT('%', '{$escLike}', '%')
+        ORDER BY
+          CASE WHEN INSTR(name, '{$escLike}') > 0 THEN 0 ELSE 1 END,
+          ABS(CHAR_LENGTH(name) - CHAR_LENGTH('{$escLike}')) ASC,
+          CASE WHEN INSTR('{$escLike}', name) > 0 THEN 0 ELSE 1 END,
+          INSTR(name, '{$escLike}') ASC,
+          name ASC
+        LIMIT 1
+      ";
+      $res2 = db_query($mysqli, $sql2);
       if ($row2 = $res2->fetch_assoc()) {
         $ingredient_id = (int)$row2['ingredient_id'];
         // 如需記錄實際匹配到的名稱，可用 $row2['name']
       }
+      $res2->free(); // 釋放結果集
     }
 
     $clean_ingredients[] = [
@@ -104,10 +89,6 @@ try {
       'amount' => $amount
     ];
   }
-
-  // 關閉查詢語句
-  $stmt_exact->close();
-  $stmt_like_best->close();
 
   // ---- DB 寫入 ----
   $mysqli->begin_transaction();
@@ -150,11 +131,10 @@ try {
   ], 200);
 
 } catch (Throwable $e) {
-  // 取代 $mysqli->rollback();
-  safe_mysqli_rollback($mysqli);
+  // 失敗回滾（已在 functions.php 實作 safe 版本亦可）
+  try { $mysqli->rollback(); } catch (Throwable $ignore) {}
 
-  // 錯誤回傳...
   send_json(['status'=>'fail','message'=>$e->getMessage()], 500);
-}finally {
+} finally {
   if (isset($mysqli)) $mysqli->close();
 }
