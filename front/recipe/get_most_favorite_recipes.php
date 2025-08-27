@@ -14,6 +14,7 @@ try {
     $query = "SELECT r.recipe_id, r.name, r.image, COUNT(f.user_id) AS favorite_count
               FROM recipe AS r
               LEFT JOIN recipe_favorite AS f ON r.recipe_id = f.recipe_id
+              WHERE status=1
               GROUP BY r.recipe_id
               ORDER BY favorite_count DESC
               LIMIT 4;";

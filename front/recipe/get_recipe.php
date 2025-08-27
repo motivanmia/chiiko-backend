@@ -19,6 +19,7 @@ if ($method === 'GET') {
             `recipe` AS r
         LEFT JOIN
             `recipe_favorite` AS rf ON r.recipe_id = rf.recipe_id
+        WHERE r.status=1
         GROUP BY
             r.recipe_id
         ORDER BY
@@ -40,7 +41,8 @@ if ($method === 'GET') {
         LEFT JOIN
             `recipe_favorite` AS rf ON r.recipe_id = rf.recipe_id
         WHERE
-            r.created_at >= DATE_SUB(NOW(), INTERVAL 3 MONTH) 
+            r.created_at >= DATE_SUB(NOW(), INTERVAL 3 MONTH) AND r.status=1
+
         GROUP BY
             r.recipe_id
         ORDER BY
@@ -61,6 +63,7 @@ if ($method === 'GET') {
             `recipe` AS r
         LEFT JOIN
             `recipe_favorite` AS rf ON r.recipe_id = rf.recipe_id
+        WHERE r.status=1
         GROUP BY
             r.recipe_id
         ORDER BY

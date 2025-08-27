@@ -12,10 +12,20 @@ if ($_SERVER['REQUEST_METHOD'] !== 'GET'){send_json(["status"=>"error","message"
 try {
   $hotRecipes=[];
 
-  $hotRecipeQuery ="SELECT recipe_id,name,image
-                    FROM recipe
-                    ORDER BY views DESC
-                    LIMIT 4;";
+  $hotRecipeQuery ="SELECT
+            r.*,
+            COUNT(rf.recipe_id) AS favorite_count
+        FROM
+            `recipe` AS r
+        LEFT JOIN
+            `recipe_favorite` AS rf ON r.recipe_id = rf.recipe_id
+        WHERE
+            r.created_at >= DATE_SUB(NOW(), INTERVAL 3 MONTH) AND r.status=1
+
+        GROUP BY
+            r.recipe_id
+        ORDER BY
+            favorite_count DESC;";
   $hotRecipeResult=$mysqli->query($hotRecipeQuery);
   if(!$hotRecipeResult){
     throw new \mysqli_sql_exception('查詢失敗:'.$mysqli->error);
