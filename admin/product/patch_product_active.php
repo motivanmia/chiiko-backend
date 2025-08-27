@@ -37,7 +37,6 @@ if ($stmt->execute()) {
     send_json(['error' => '資料庫更新失敗: ' . $stmt->error], 500);
 }
 
-
 $stmt->close();
 $mysqli->close();
 ?>
