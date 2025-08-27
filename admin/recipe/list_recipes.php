@@ -85,16 +85,17 @@ function map_status($row) {
   if ($is_manager_post) {
     // 如果是管理員發的文
     return match ($code) {
-      0 => '草稿 (管理員)', // 假設管理員的 0 也是草稿
-      1 => '已發佈',
+      3 => '草稿 ', // 假設管理員的 0 也是草稿
+      1 => '已上架',
+      2 => '已下架',
       default => '未知',
     };
   } else {
     // 如果是會員發的文
     return match ($code) {
       0 => '待審核',
-      1 => '已審核',
-      // status = 3 的情況已經被 SQL 過濾掉了
+      1 => '已上架',
+      2 => '已下架',
       default => '未知',
     };
   }
