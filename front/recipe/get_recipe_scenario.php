@@ -97,6 +97,8 @@ try {
                             `recipe_favorite` AS rf ON r.recipe_id = rf.recipe_id
                         WHERE
                             r.recipe_category_id = '{$escapedCategoryId}'
+                        AND
+                            r.status =1
                         GROUP BY
                             r.recipe_id,
                             r.tag
