@@ -1,17 +1,18 @@
 <?php
-// /admin/recipe/patch_recipe_status.php
 
-// ✅ 1. 先引入所有必要的文件
+ob_start();
+
+
 require_once __DIR__ . '/../../common/cors.php';
 require_once __DIR__ . '/../../common/config.php';
 require_once __DIR__ . '/../../common/functions.php';
 require_once __DIR__ . '/../../common/conn.php';
 
-// ✅ 2. 在所有引入都完成之後，才啟動 session
+// 2. 在所有引入都完成之後，才啟動 session
 session_start();
 
 try {
-    // ✅ 3. 在 try 塊的最開始，執行所有前置檢查
+    // 3. 在 try 塊的最開始，執行所有前置檢查
     
     // a. 檢查請求方法
     require_method('POST');
@@ -52,10 +53,17 @@ try {
     
     $stmt->close();
     
+    // ✅ 【核心修正 2】: 在發送成功 JSON 之前，清空緩衝區
+    // 這會丟棄掉所有在這之前可能產生的意外輸出 (空格, BOM, PHP 警告等)
+    ob_end_clean();
+    
     // 回傳成功的訊息
     send_json(['status' => 'success', 'message' => '食譜狀態已成功更新！'], 200);
 
 } catch (Exception $e) {
+    // ✅ 【核心修正 3】: 在發送失敗 JSON 之前，也清空緩衝區
+    ob_end_clean();
+
     // 統一的錯誤處理
     $code = is_numeric($e->getCode()) && $e->getCode() >= 400 ? $e->getCode() : 500;
     send_json([
