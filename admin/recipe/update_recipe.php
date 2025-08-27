@@ -26,7 +26,7 @@ try {
   // 允許更新的欄位
   $fields = [
     'user_id'            => 'i',
-    'manage_id'          => 'i',   // 注意不是 manager_id
+    'manager_id'          => 'i',   // 注意不是 manager_id
     'recipe_category_id' => 'i',
     'name'               => 's',
     'content'            => 's',
