@@ -30,7 +30,7 @@ try {
     $action = $data['action'];
 
     if ($action === 'add') {
-        $check_sql = "SELECT COUNT(*) FROM `recipe_favorite` WHERE `member_id` = '{$memberId}' AND `recipe_id` = '{$recipeId}'";
+        $check_sql = "SELECT COUNT(*) FROM `recipe_favorite` WHERE `user_id` = '{$memberId}' AND `recipe_id` = '{$recipeId}'";
         
         $check_result = mysqli_query($mysqli, $check_sql);
         if (!$check_result) {
@@ -44,7 +44,7 @@ try {
             exit();
         }
 
-        $sql = "INSERT INTO `recipe_favorite` (`member_id`, `recipe_id`) VALUES ('{$memberId}', '{$recipeId}')";
+        $sql = "INSERT INTO `recipe_favorite` (`user_id`, `recipe_id`) VALUES ('{$memberId}', '{$recipeId}')";
         
         $result = mysqli_query($mysqli, $sql);
         
@@ -54,7 +54,7 @@ try {
             throw new \mysqli_sql_exception("Insert failed: " . mysqli_error($mysqli));
         }
     } elseif ($action === 'remove') {
-        $sql = "DELETE FROM `recipe_favorite` WHERE `member_id` = '{$memberId}' AND `recipe_id` = '{$recipeId}'";
+        $sql = "DELETE FROM `recipe_favorite` WHERE `user_id` = '{$memberId}' AND `recipe_id` = '{$recipeId}'";
         
         $result = mysqli_query($mysqli, $sql);
         

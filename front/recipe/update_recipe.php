@@ -1,116 +1,137 @@
 <?php
+// --- 開啟錯誤回報，方便開發時除錯 ---
+ini_set('display_errors', 1);
+ini_set('display_startup_errors', 1);
+error_reporting(E_ALL);
 
-//更新（修改）食譜
+// --- 引入必要的檔案 ---
 require_once __DIR__ . '/../../common/cors.php';
 require_once __DIR__ . '/../../common/config.php';
 require_once __DIR__ . '/../../common/conn.php';
 require_once __DIR__ . '/../../common/functions.php';
 
+// --- 開始資料庫交易 ---
+$mysqli->begin_transaction();
+
 try {
-  require_method('POST');
-  $data = get_json_input();
-
-  $tidy = fn($s) => is_string($s) ? trim($s) : $s;
-
-  $recipe_id = isset($data['recipe_id']) && is_numeric($data['recipe_id']) ? (int)$data['recipe_id'] : null;
-  if (!$recipe_id) throw new Exception('缺少 recipe_id', 400);
-
-  // 先查目前資料（用來判斷舊圖/狀態）
-  $rs = $mysqli->prepare("SELECT status, image FROM recipe WHERE recipe_id = ?");
-  $rs->bind_param('i', $recipe_id);
-  $rs->execute();
-  $cur = $rs->get_result()->fetch_assoc();
-  $rs->close();
-  if (!$cur) throw new Exception('找不到食譜', 404);
-
-  // 允許更新的欄位
-  $fields = [
-    'user_id'            => 'i',
-    'manage_id'          => 'i',   // 注意不是 manager_id
-    'recipe_category_id' => 'i',
-    'name'               => 's',
-    'content'            => 's',
-    'serving'            => 's',
-    'image'              => 's',
-    'cooked_time'        => 's',
-    'status'             => 'i',
-    'tag'                => 's',
-  ];
-
-  // 蒐集有效欄位
-  $set = [];
-  $types = '';
-  $params = [];
-
-  foreach ($fields as $k => $t) {
-    if (array_key_exists($k, $data)) {
-      $val = $tidy($data[$k]);
-      $set[] = "`$k` = ?";
-      $types .= $t;
-      $params[] = $val;
+    // --- 基本請求驗證 ---
+    require_method('POST');
+    $data = get_json_input();
+    
+    // --- 安全地啟動 Session ---
+    if (session_status() == PHP_SESSION_NONE) {
+        session_start();
     }
-  }
-
-  if (empty($set)) throw new Exception('沒有可更新的欄位', 400);
-
-  // ---- 驗證（防擋）----
-  // 判斷更新後狀態：若沒帶 status 就沿用舊值
-  $nextStatus = array_key_exists('status', $data) ? (int)$data['status'] : (int)$cur['status'];
-
-  // 若要上線/送審（0=待審核、1=上架）就強制檢查欄位
-  if ($nextStatus === 0 || $nextStatus === 1) {
-    $name        = array_key_exists('name',        $data) ? $tidy($data['name'])        : null;
-    $content     = array_key_exists('content',     $data) ? $tidy($data['content'])     : null;
-    $tag         = array_key_exists('tag',         $data) ? $tidy($data['tag'])         : null;
-    $cooked_time = array_key_exists('cooked_time', $data) ? $tidy($data['cooked_time']) : null;
-    $serving     = array_key_exists('serving',     $data) ? $tidy($data['serving'])     : null;
-    $image       = array_key_exists('image',       $data) ? $tidy($data['image'])       : $cur['image'];
-
-    // 若前端只改 status（審核流程），不會帶上述欄位，就從資料庫舊值補齊拿來驗證
-    if ($name === null || $content === null || $tag === null || $cooked_time === null || $serving === null) {
-      $q = $mysqli->prepare("SELECT name, content, tag, cooked_time, serving FROM recipe WHERE recipe_id = ?");
-      $q->bind_param('i', $recipe_id);
-      $q->execute();
-      $row = $q->get_result()->fetch_assoc();
-      $q->close();
-      if ($name        === null) $name        = $row['name']        ?? '';
-      if ($content     === null) $content     = $row['content']     ?? '';
-      if ($tag         === null) $tag         = $row['tag']         ?? '';
-      if ($cooked_time === null) $cooked_time = $row['cooked_time'] ?? '';
-      if ($serving     === null) $serving     = $row['serving']     ?? '';
+    $user_id = $_SESSION['user_id'] ?? null;
+    
+    if (!$user_id) {
+        throw new Exception('使用者未登入', 401);
+    }
+    
+    // --- 驗證食譜 ID ---
+    $recipe_id = isset($data['recipe_id']) && is_numeric($data['recipe_id']) ? (int)$data['recipe_id'] : null;
+    if (!$recipe_id) {
+        throw new Exception('缺少食譜 ID', 400);
     }
 
-    // 具體檢查
-    $errors = [];
-    if ($name === '' || mb_strlen($name) > 15)         $errors[] = '標題必填且 ≤ 15 字';
-    if ($content === '' || mb_strlen($content) > 40)   $errors[] = '內文必填且 ≤ 40 字';
-    if ($tag === '' || strpos($tag, '#') === false)    $errors[] = '至少一個 TAG，如 #蛋#家常';
-    $allowTimes = ['5~10','10~15','15~30','30~60','60~120','120~180','180+'];
-    if (!in_array($cooked_time, $allowTimes, true))    $errors[] = '烹煮時間不合法';
-    $allowServings = ['1~2','3~4','5~6','7~8','9~10'];
-    if (!in_array($serving, $allowServings, true))     $errors[] = '料理份數不合法';
-    if (!$image)                                       $errors[] = '請上傳圖片';
+    // --- 驗證食譜所有權 ---
+    $stmt_check = $mysqli->prepare("SELECT status, image FROM recipe WHERE recipe_id = ? AND user_id = ?");
+    $stmt_check->bind_param("ii", $recipe_id, $user_id);
+    $stmt_check->execute();
+    $result_check = $stmt_check->get_result();
+    $cur = $result_check->fetch_assoc();
+    $stmt_check->close();
+    
+    if (!$cur) {
+        throw new Exception('找不到食譜或您無權限修改此食譜', 404);
+    }
+    
+    // --- 步驟 1: 更新主食譜資料 (recipe table) ---
+    // (這部分的邏輯與上一版相同)
+    $set_clauses = [];
+    $bind_values = [];
+    $bind_types = '';
+    $allowed_fields = ['recipe_category_id', 'name', 'content', 'serving', 'image', 'cooked_time', 'status', 'tag', 'manager_id'];
+    foreach ($allowed_fields as $k) {
+        if (array_key_exists($k, $data)) {
+            $val = is_string($data[$k]) ? trim($data[$k]) : $data[$k];
+            if ($k === 'image' && is_string($val)) {
+                $imageBaseUrl = IMG_BASE_URL . '/'; 
+                if (strpos($val, $imageBaseUrl) === 0) {
+                    $val = str_replace($imageBaseUrl, '', $val);
+                }
+            }
+            $set_clauses[] = "`{$k}` = ?";
+            $bind_values[] = $val;
+            $bind_types .= in_array($k, ['recipe_category_id', 'status', 'manager_id']) ? 'i' : 's';
+        }
+    }
+    if (!empty($set_clauses)) {
+        $sql = "UPDATE recipe SET " . implode(', ', $set_clauses) . " WHERE recipe_id = ? AND user_id = ?";
+        $bind_values[] = $recipe_id;
+        $bind_values[] = $user_id;
+        $bind_types .= 'ii';
+        $stmt_update = $mysqli->prepare($sql);
+        $stmt_update->bind_param($bind_types, ...$bind_values);
+        if (!$stmt_update->execute()) {
+            throw new Exception('主食譜資料更新失敗：' . $stmt_update->error, 500);
+        }
+        $stmt_update->close();
+    }
 
-    if (!empty($errors)) throw new Exception('欄位驗證失敗：' . implode('；', $errors), 400);
-  }
-  // ---- 驗證結束 ----
+    // --- ✅ 步驟 2: 更新食材 (ingredient_item table) ---
+    // 2a. 先刪除所有與此食譜相關的舊食材
+    $stmt_delete_ing = $mysqli->prepare("DELETE FROM ingredient_item WHERE recipe_id = ?");
+    $stmt_delete_ing->bind_param("i", $recipe_id);
+    $stmt_delete_ing->execute();
+    $stmt_delete_ing->close();
 
-  $sql = "UPDATE recipe SET " . implode(', ', $set) . " WHERE recipe_id = ?";
-  $types .= 'i';
-  $params[] = $recipe_id;
+    // 2b. 插入從前端傳來的新食材
+    if (isset($data['ingredients']) && is_array($data['ingredients'])) {
+        $stmt_insert_ing = $mysqli->prepare("INSERT INTO ingredient_item (recipe_id, name, serving) VALUES (?, ?, ?)");
+        foreach ($data['ingredients'] as $ingredient) {
+            if (!empty($ingredient['name']) && !empty($ingredient['amount'])) {
+                $stmt_insert_ing->bind_param("iss", $recipe_id, $ingredient['name'], $ingredient['amount']);
+                $stmt_insert_ing->execute();
+            }
+        }
+        $stmt_insert_ing->close();
+    }
 
-  $stmt = $mysqli->prepare($sql);
-  $stmt->bind_param($types, ...$params);
-  $stmt->execute();
-  if ($stmt->errno) throw new Exception('資料更新失敗：' . $stmt->error, 500);
-  $stmt->close();
+    // --- ✅ 步驟 3: 更新料理步驟 (steps table) ---
+    // 3a. 先刪除所有與此食譜相關的舊步驟
+    $stmt_delete_steps = $mysqli->prepare("DELETE FROM steps WHERE recipe_id = ?");
+    $stmt_delete_steps->bind_param("i", $recipe_id);
+    $stmt_delete_steps->execute();
+    $stmt_delete_steps->close();
 
-  send_json(['status'=>'success','message'=>'食譜已更新']);
+    // 3b. 插入從前端傳來的新步驟
+    if (isset($data['steps']) && is_array($data['steps'])) {
+        $stmt_insert_steps = $mysqli->prepare("INSERT INTO steps (recipe_id, `order`, content) VALUES (?, ?, ?)");
+        foreach ($data['steps'] as $index => $step_content) {
+            if (!empty(trim($step_content))) {
+                $order = $index + 1; // 順序從 1 開始
+                $stmt_insert_steps->bind_param("iis", $recipe_id, $order, $step_content);
+                $stmt_insert_steps->execute();
+            }
+        }
+        $stmt_insert_steps->close();
+    }
 
+    // --- 如果所有操作都成功，提交交易 ---
+    $mysqli->commit();
+    
+    send_json(['status' => 'success', 'message' => '食譜已成功更新']);
+    
 } catch (Throwable $e) {
-  $code = $e->getCode() ?: 500;
-  $code = ($code>=400 && $code<600) ? $code : 500;
-  send_json(['status'=>'fail','message'=>$e->getMessage()], $code);
+    // --- 如果任何步驟出錯，撤銷所有操作 ---
+    $mysqli->rollback();
+    
+    $code = $e->getCode() ?: 500;
+    $code = ($code >= 400 && $code < 600) ? $code : 500;
+    send_json(['status' => 'fail', 'message' => $e->getMessage()], $code);
 } finally {
-  if (isset($mysqli)) $mysqli->close();
+    if (isset($mysqli)) {
+        $mysqli->close();
+    }
 }

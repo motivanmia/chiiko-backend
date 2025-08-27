@@ -38,6 +38,16 @@
 
   $order_status = $status_map[$order_status_text];
 
+  // 查詢舊狀態 & user_id
+  $sql = "SELECT order_status, user_id FROM orders WHERE order_id = {$order_id} LIMIT 1";
+  $res = db_query($mysqli, $sql);
+  $row = $res->fetch_assoc();
+  if (!$row) {
+    send_json(['status' => 'fail', 'message' => '找不到該訂單'], 404);
+  }
+  $old_status = (int)$row['order_status'];
+  $user_id    = (int)$row['user_id'];
+
   // 更新訂單
   $sql = sprintf(
     "UPDATE orders SET order_status = %d WHERE order_id = %d",
@@ -46,6 +56,9 @@
   );
 
   db_query($mysqli, $sql);
+  
+  // 建立通知（只有在狀態轉換時才通知）
+  notify_order_on_status_change($mysqli, $old_status, $order_status, $order_id, $user_id);
 
   send_json([
     'status' => 'success',

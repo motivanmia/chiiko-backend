@@ -1,9 +1,13 @@
 <?php
-// ✅ 先處理 CORS，避免錯誤時瀏覽器看不到 JSON
 require_once __DIR__ . '/../../common/cors.php';
 require_once __DIR__ . '/../../common/config.php';
 require_once __DIR__ . '/../../common/conn.php';
 require_once __DIR__ . '/../../common/functions.php';
+
+/** 建議：上線除錯時暫時開啟（完成後可移除） */
+// mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
+
+
 
 try {
   require_method('POST');
@@ -18,101 +22,129 @@ try {
   }
 
   $recipe_id = (int)$data['recipe_id'];
-  // 模式：append = 只新增（保留原本功能）；replace = 整批取代（提供修改用）
-  $mode = strtolower(trim((string)($data['mode'] ?? 'append')));
+  $mode = strtolower(trim((string)($data['mode'] ?? 'replace'))); // 預設使用 replace 模式
   if (!in_array($mode, ['append', 'replace'], true)) {
-    $mode = 'append';
+    $mode = 'replace';
   }
 
-  // （可選）相容型 fallback：若前端沒給 ingredient_id，但有 name，就套用一個預設 ID。
-  // 若不想開這個相容模式，改成 null 即可。
-  $FALLBACK_ING_ID = 1; // ← 你可以換掉或設成 null 以關閉
+  // 名稱簡易正規化：去頭尾、折疊空白（含全形）
+  $norm = function(string $s): string {
+    $s = trim($s);
+    // 將所有空白(半形/全形)折疊為單一半形空白
+    $s = preg_replace('/[\x{3000}\s]+/u', ' ', $s);
+    return $s;
+  };
 
-  // 讀主表狀態：0 待審核 / 1 上架 / 2 下架 / 3 草稿
-  $q = $mysqli->prepare("SELECT status FROM recipe WHERE recipe_id = ?");
-  $q->bind_param('i', $recipe_id);
-  $q->execute();
-  $row = $q->get_result()->fetch_assoc();
-  $q->close();
+  // ---- 查詢語句（一次 prepare，多次執行）----
+  // 1) 精準比對（不分大小寫）— 使用 LOWER 避免 collation 混用
+  $stmt_exact = $mysqli->prepare(
+    "SELECT ingredient_id
+       FROM ingredients
+      WHERE LOWER(name) = LOWER(?)
+      LIMIT 1"
+  );
+  if (!$stmt_exact) throw new Exception('準備精準比對語句失敗：' . $mysqli->error, 500);
 
-  if (!$row) {
-    throw new Exception('找不到對應的食譜', 404);
-  }
-  $status = (int)$row['status'];
-  // 待審核/上架：需至少一筆且每筆完整
-  $needNonEmpty = in_array($status, [0, 1], true);
+  // 2) 模糊比對 + 智慧排序（長度接近、出現位置前、名稱包含關鍵字優先）
+  //    全部依賴連線/欄位預設（utf8mb4_unicode_ci），避免 CAST/COLLATE 混用
+  $stmt_like_best = $mysqli->prepare(
+    "SELECT ingredient_id, name
+       FROM ingredients
+      WHERE name LIKE CONCAT('%', ?, '%')
+      ORDER BY
+        -- 名稱中有關鍵字優先
+        CASE WHEN INSTR(name, ?) > 0 THEN 0 ELSE 1 END,
+        -- 長度越接近越好
+        ABS(CHAR_LENGTH(name) - CHAR_LENGTH(?)) ASC,
+        -- 關鍵字是否包含名稱（短名優先，如『雞肉』優於『雞肉條炒飯』）
+        CASE WHEN INSTR(?, name) > 0 THEN 0 ELSE 1 END,
+        -- 出現位置越靠前越好
+        INSTR(name, ?) ASC,
+        -- 穩定排序
+        name ASC
+      LIMIT 1"
+  );
+  if (!$stmt_like_best) throw new Exception('準備模糊比對語句失敗：' . $mysqli->error, 500);
 
-  // ---- 清洗資料 ----
-  $clean = [];
-  foreach ($data['ingredients'] as $idx => $it) {
+  // ---- 清洗並處理每一筆食材資料 ----
+  $clean_ingredients = [];
+  foreach ($data['ingredients'] as $it) {
+    $rawName = isset($it['name']) ? (string)$it['name'] : '';
+    $name = $norm($rawName);
     $amount = isset($it['amount']) ? trim((string)$it['amount']) : '';
 
-    // 優先吃 ingredient_id；沒有就看 name（如果你開了 fallback）
+    // 只要名稱或數量是空的，就跳過
+    if ($name === '' || $amount === '') continue;
+
     $ingredient_id = null;
-    if (isset($it['ingredient_id']) && is_numeric($it['ingredient_id'])) {
-      $ingredient_id = (int)$it['ingredient_id'];
-    } elseif (!empty($it['name']) && $FALLBACK_ING_ID !== null) {
-      // 相容舊行為：暫時用一個預設 ID
-      $ingredient_id = (int)$FALLBACK_ING_ID;
+
+    // 1) 精準比對（不分大小寫）
+    $stmt_exact->bind_param('s', $name);
+    $stmt_exact->execute();
+    $res1 = $stmt_exact->get_result();
+    if ($row = $res1->fetch_assoc()) {
+      $ingredient_id = (int)$row['ingredient_id'];
     }
 
-    if ($ingredient_id !== null && $amount !== '') {
-      $clean[] = [$ingredient_id, $amount];
-    } elseif ($needNonEmpty) {
-      throw new Exception("第 " . ($idx + 1) . " 筆食材缺少 ingredient_id/name 或 amount", 400);
+    // 2) 模糊比對（智慧排序取最佳一筆）
+    if ($ingredient_id === null) {
+      // 依序填入六個同值參數
+      $stmt_like_best->bind_param('sssss', $name, $name, $name, $name, $name);
+      $stmt_like_best->execute();
+      $res2 = $stmt_like_best->get_result();
+      if ($row2 = $res2->fetch_assoc()) {
+        $ingredient_id = (int)$row2['ingredient_id'];
+        // 如需記錄實際匹配到的名稱，可用 $row2['name']
+      }
     }
-    // 若非上線/送審，空的就略過不插
+
+    $clean_ingredients[] = [
+      'id'     => $ingredient_id, // 可能是整數或 NULL（欄位需允許 NULL；否則請改嚴格模式）
+      'name'   => $rawName,       // 保留使用者原輸入
+      'amount' => $amount
+    ];
   }
 
-  if ($needNonEmpty && count($clean) === 0) {
-    throw new Exception('上線/送審時需至少一筆完整的食材', 400);
-  }
+  // 關閉查詢語句
+  $stmt_exact->close();
+  $stmt_like_best->close();
 
   // ---- DB 寫入 ----
   $mysqli->begin_transaction();
 
   if ($mode === 'replace') {
-    // 修改情境：整批取代
     $del = $mysqli->prepare("DELETE FROM ingredient_item WHERE recipe_id = ?");
-    if (!$del) throw new Exception('刪除舊食材準備失敗：' . $mysqli->error, 500);
+    if (!$del) throw new Exception('刪除舊食材語句準備失敗：' . $mysqli->error, 500);
     $del->bind_param('i', $recipe_id);
     $del->execute();
     $del->close();
   }
 
   $inserted = 0;
-  if (!empty($clean)) {
-    $ins = $mysqli->prepare("INSERT INTO ingredient_item (recipe_id, ingredient_id, serving) VALUES (?, ?, ?)");
-    if (!$ins) throw new Exception('新增食材準備失敗：' . $mysqli->error, 500);
+  if (!empty($clean_ingredients)) {
+    $ins_stmt = $mysqli->prepare(
+      "INSERT INTO ingredient_item (recipe_id, ingredient_id, name, serving)
+       VALUES (?, ?, ?, ?)"
+    );
+    if (!$ins_stmt) throw new Exception('新增食材準備失敗：' . $mysqli->error, 500);
 
-    foreach ($clean as [$ingId, $serv]) {
-      $ins->bind_param('iis', $recipe_id, $ingId, $serv);
-      $ins->execute();
-      if ($ins->errno) throw new Exception('新增食材失敗：' . $ins->error, 500);
-      $inserted += $ins->affected_rows;
+    foreach ($clean_ingredients as $ing) {
+      // 注意：若 ingredient_item.ingredient_id 為 NOT NULL + 外鍵，且 $ing['id'] 為 NULL，會失敗
+      // 若要允許自由輸入名稱，請把 ingredient_id 改為 NULLable，且 FK 設 ON DELETE SET NULL
+      $ingId = $ing['id']; // 可能為 null
+      $ins_stmt->bind_param('iiss', $recipe_id, $ingId, $ing['name'], $ing['amount']);
+      $ins_stmt->execute();
+      if ($ins_stmt->errno) throw new Exception('新增食材失敗：' . $ins_stmt->error, 500);
+      $inserted += $ins_stmt->affected_rows;
     }
-    $ins->close();
-  }
-
-  // 上線/送審強制檢查：操作後總數仍需 ≥ 1
-  if ($needNonEmpty) {
-    $chk = $mysqli->prepare("SELECT COUNT(*) AS cnt FROM ingredient_item WHERE recipe_id = ?");
-    $chk->bind_param('i', $recipe_id);
-    $chk->execute();
-    $cntRow = $chk->get_result()->fetch_assoc();
-    $chk->close();
-
-    if ((int)$cntRow['cnt'] === 0) {
-      $mysqli->rollback();
-      throw new Exception('上線/送審時至少需一筆食材', 400);
-    }
+    $ins_stmt->close();
   }
 
   $mysqli->commit();
 
   send_json([
     'status'   => 'success',
-    'message'  => $mode === 'replace' ? '食材已更新（整批取代）' : '食材已新增（附加）',
+    'message'  => '食材已成功更新',
     'mode'     => $mode,
     'inserted' => $inserted
   ], 200);

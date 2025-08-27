@@ -63,10 +63,10 @@
       return $item;
     };
 
-    write_log("data: " . json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+    // write_log("data: " . json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
 
     $data = $process($data);
-    write_log("before data: ". $data);
+    // write_log("before data: ". $data);
     header('Content-Type: application/json; charset=utf-8');
     http_response_code($status_code);
     echo json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
@@ -208,5 +208,127 @@
 
     // 將訊息寫入檔案
     file_put_contents($logFile, "[$time] $message" . PHP_EOL, FILE_APPEND);
+  }
+
+  /**
+ * 建立一筆通知
+ * @param mysqli $db
+ * @param array $args [
+ *   'receiver_id' => (int) 必填,
+ *   'type'        => (int) 必填,
+ *   'title'       => (string) 必填,   // 會包進 content JSON
+ *   'content'     => (string) 必填,   // 會包進 content JSON
+ *   'order_id'    => (int|null) 選填,
+ *   'recipe_id'   => (int|null) 選填,
+ *   'comment_id'  => (int|null) 選填,
+ * ]
+ * @return int 新增的 notification_id
+ * @throws Exception on error
+ */
+  function create_notification(mysqli $db, array $args): int {
+    $receiver_id = (int)($args['receiver_id'] ?? 0);
+    $type        = (int)($args['type'] ?? 0);
+    $title       = trim((string)($args['title'] ?? ''));
+    $content     = trim((string)($args['content'] ?? ''));
+    $order_id    = array_key_exists('order_id',   $args) ? (int)$args['order_id']   : null;
+    $recipe_id   = array_key_exists('recipe_id',  $args) ? (int)$args['recipe_id']  : null;
+    $comment_id  = array_key_exists('comment_id', $args) ? (int)$args['comment_id'] : null;
+
+    if ($receiver_id <= 0 || $type === 0 || $title === '' || $content === '') {
+      throw new Exception("create_notification: 缺少必要參數");
+    }
+
+    // content 欄位是 VARCHAR(1000) 
+    $title   = mb_substr($title, 0, 100);
+    $content = mb_substr($content, 0, 1000);
+    $content_json = json_encode(['title' => $title, 'content' => $content], JSON_UNESCAPED_UNICODE);
+
+    $sql = "INSERT INTO notification
+              (receiver_id, comment_id, recipe_id, order_id, type, content, status, created_at)
+            VALUES
+              (?, ?, ?, ?, ?, ?, 0, NOW())";
+    $stmt = $db->prepare($sql);
+    if (!$stmt) {
+      throw new Exception("create_notification: prepare failed - " . $db->error);
+    }
+    $stmt->bind_param('iiiiss', $receiver_id, $comment_id, $recipe_id, $order_id, $type, $content_json);
+    if (!$stmt->execute()) {
+      $err = $stmt->error;
+      $stmt->close();
+      throw new Exception("create_notification: execute failed - " . $err);
+    }
+    $id = $stmt->insert_id;
+    $stmt->close();
+    return $id;
+  }
+
+  /**
+   * 依「訂單狀態轉移」發通知
+   * 0->1 出貨(type=20) / 1->2 完成(type=21) / 0->3 取消(type=22)
+   */
+  function notify_order_on_status_change(mysqli $db, int $old, int $new, int $order_id, int $user_id): void {
+    if ($old === 0 && $new === 1) {
+      create_notification($db, [
+        'receiver_id' => $user_id,
+        'order_id'    => $order_id,
+        'type'        => 20,
+        'title'       => '訂單已出貨',
+        'content'     => "您的訂單 #{$order_id} 已出貨，請留意物流訊息。",
+      ]);
+    } elseif ($old === 1 && $new === 2) {
+      create_notification($db, [
+        'receiver_id' => $user_id,
+        'order_id'    => $order_id,
+        'type'        => 21,
+        'title'       => '訂單已完成',
+        'content'     => "您的訂單 #{$order_id} 已完成，感謝您的購買！",
+      ]);
+    } elseif ($old === 0 && $new === 3) {
+      create_notification($db, [
+        'receiver_id' => $user_id,
+        'order_id'    => $order_id,
+        'type'        => 22,
+        'title'       => '訂單已取消',
+        'content'     => "您的訂單 #{$order_id} 已取消，如有疑問請聯繫客服。",
+      ]);
+    }
+  }
+
+  /**
+   *食譜狀態 0->1 上架(type=10) / 0->3 退回(type=11)
+   */
+  function notify_recipe_on_status_change(mysqli $db, int $old, int $new, int $recipe_id, int $author_id, string $recipe_name): void {
+    if ($old === 0 && $new === 1) {
+      create_notification($db, [
+        'receiver_id' => $author_id,
+        'recipe_id'   => $recipe_id,
+        'type'        => 10,
+        'title'       => '食譜已上架',
+        'content'     => "你的食譜《{$recipe_name}》已通過並上架！",
+      ]);
+    } elseif ($old === 0 && $new === 3) {
+      create_notification($db, [
+        'receiver_id' => $author_id,
+        'recipe_id'   => $recipe_id,
+        'type'        => 11,
+        'title'       => '食譜審核未通過',
+        'content'     => "你的食譜《{$recipe_name}》未通過審核，請調整後再送審。",
+      ]);
+    }
+  }
+
+  /**
+   * 新留言通知作者 (type=30)
+   */
+  function notify_recipe_new_comment(mysqli $db, int $author_id, int $recipe_id, int $comment_id, string $recipe_name, string $comment_content): void {
+    $preview = mb_substr($comment_content, 0, 50);
+    create_notification($db, [
+      'receiver_id' => $author_id,
+      'recipe_id'   => $recipe_id,
+      'comment_id'  => $comment_id,
+      'type'        => 30,
+      'title'       => "食譜《{$recipe_name}》有新留言",
+      'content'     => $preview,
+    ]);
   }
 ?>

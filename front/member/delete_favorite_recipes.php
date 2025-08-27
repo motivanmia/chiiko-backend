@@ -31,7 +31,7 @@
         $query =
           "DELETE
             FROM `recipe_favorite`
-            WHERE `member_id` = '$escaped_user_id' 
+            WHERE `user_id` = '$escaped_user_id' 
             AND `recipe_id` = '$escaped_recipe_id'
           ";
 

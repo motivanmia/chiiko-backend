@@ -1,8 +1,4 @@
 <?php
-// 請確保你的 common/conn.php 檔案已經引入了你的 config.php
-// 如果沒有，請在 get_recipe.php 的開頭加上這一行：
-// require_once __DIR__ . '/../../common/config.php'; 
-
 require_once __DIR__ . '/../../common/conn.php';
 require_once __DIR__ . '/../../common/cors.php';
 require_once __DIR__ . '/../../common/functions.php';
@@ -23,6 +19,7 @@ if ($method === 'GET') {
             `recipe` AS r
         LEFT JOIN
             `recipe_favorite` AS rf ON r.recipe_id = rf.recipe_id
+        WHERE r.status=1
         GROUP BY
             r.recipe_id
         ORDER BY
@@ -30,9 +27,7 @@ if ($method === 'GET') {
         $mostBookmarkedResult = $mysqli->query($mostBookmarkedQuery);
         if ($mostBookmarkedResult) {
             $mostBookmarkedRecipes = $mostBookmarkedResult->fetch_all(MYSQLI_ASSOC);
-            // 遍歷結果集，為每筆資料的圖片路徑加上 IMG_BASE_URL
             foreach ($mostBookmarkedRecipes as &$recipe) {
-                // ✅ 直接使用已經定義的 IMG_BASE_URL 常量
                 $recipe['image'] = IMG_BASE_URL .'/'. $recipe['image'];
             }
         }
@@ -46,7 +41,8 @@ if ($method === 'GET') {
         LEFT JOIN
             `recipe_favorite` AS rf ON r.recipe_id = rf.recipe_id
         WHERE
-            r.created_at >= DATE_SUB(NOW(), INTERVAL 3 MONTH) 
+            r.created_at >= DATE_SUB(NOW(), INTERVAL 3 MONTH) AND r.status=1
+
         GROUP BY
             r.recipe_id
         ORDER BY
@@ -54,9 +50,7 @@ if ($method === 'GET') {
         $seasonalHotResult = $mysqli->query($seasonalHotQuery);
         if ($seasonalHotResult) {
             $seasonalHotRecipes = $seasonalHotResult->fetch_all(MYSQLI_ASSOC);
-            // 遍歷結果集，為每筆資料的圖片路徑加上 IMG_BASE_URL
             foreach ($seasonalHotRecipes as &$recipe) {
-                // ✅ 直接使用已經定義的 IMG_BASE_URL 常量
                 $recipe['image'] = IMG_BASE_URL  .'/'. $recipe['image'];
             }
         }
@@ -69,6 +63,7 @@ if ($method === 'GET') {
             `recipe` AS r
         LEFT JOIN
             `recipe_favorite` AS rf ON r.recipe_id = rf.recipe_id
+        WHERE r.status=1
         GROUP BY
             r.recipe_id
         ORDER BY
@@ -77,14 +72,11 @@ if ($method === 'GET') {
         $latestRecipesResult = $mysqli->query($latestRecipesQuery);
         if ($latestRecipesResult) {
             $latestRecipes = $latestRecipesResult->fetch_all(MYSQLI_ASSOC);
-            // 遍歷結果集，為每筆資料的圖片路徑加上 IMG_BASE_URL
             foreach ($latestRecipes as &$recipe) {
-                // ✅ 直接使用已經定義的 IMG_BASE_URL 常量
                 $recipe['image'] = IMG_BASE_URL . '/' . $recipe['image'];
             }
         }
 
-        // 建立一個包含三個結果的 PHP 陣列
         $response = [
             'success' => true,
             'data' => [

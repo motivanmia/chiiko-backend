@@ -1,32 +1,31 @@
 <?php
+// /admin/recipe/update_recipe.php
 
-//更新（修改）食譜
+session_start();
 require_once __DIR__ . '/../../common/cors.php';
 require_once __DIR__ . '/../../common/config.php';
-require_once __DIR__ . '/../../common/conn.php';
 require_once __DIR__ . '/../../common/functions.php';
+require_once __DIR__ . '/../../common/conn.php';
 
 try {
   require_method('POST');
   $data = get_json_input();
-
-  $tidy = fn($s) => is_string($s) ? trim($s) : $s;
+  
+  if (!isset($_SESSION['manager_id'])) {
+      throw new Exception('未登入或 Session 已過期，請重新登入。', 401);
+  }
 
   $recipe_id = isset($data['recipe_id']) && is_numeric($data['recipe_id']) ? (int)$data['recipe_id'] : null;
   if (!$recipe_id) throw new Exception('缺少 recipe_id', 400);
 
-  // 先查目前資料（用來判斷舊圖/狀態）
-  $rs = $mysqli->prepare("SELECT status, image FROM recipe WHERE recipe_id = ?");
-  $rs->bind_param('i', $recipe_id);
-  $rs->execute();
-  $cur = $rs->get_result()->fetch_assoc();
-  $rs->close();
-  if (!$cur) throw new Exception('找不到食譜', 404);
+  // ---- 啟動資料庫交易 ----
+  // 因為我們要同時操作多張表，必須使用交易來確保資料一致性
+  $mysqli->begin_transaction();
 
-  // 允許更新的欄位
+  // ==========================================================
+  //  1. 更新主食譜資料 (沿用您靈活的動態更新邏輯)
+  // ==========================================================
   $fields = [
-    'user_id'            => 'i',
-    'manage_id'          => 'i',   // 注意不是 manager_id
     'recipe_category_id' => 'i',
     'name'               => 's',
     'content'            => 's',
@@ -36,81 +35,99 @@ try {
     'status'             => 'i',
     'tag'                => 's',
   ];
-
-  // 蒐集有效欄位
   $set = [];
   $types = '';
   $params = [];
 
   foreach ($fields as $k => $t) {
     if (array_key_exists($k, $data)) {
-      $val = $tidy($data[$k]);
       $set[] = "`$k` = ?";
       $types .= $t;
-      $params[] = $val;
+      $params[] = $data[$k];
     }
   }
 
-  if (empty($set)) throw new Exception('沒有可更新的欄位', 400);
+  // 只有在前端確實傳來了 recipe 主表的欄位時，才執行 UPDATE
+  if (!empty($set)) {
+    $sql_update_recipe = "UPDATE recipe SET " . implode(', ', $set) . " WHERE recipe_id = ?";
+    $types .= 'i';
+    $params[] = $recipe_id;
 
-  // ---- 驗證（防擋）----
-  // 判斷更新後狀態：若沒帶 status 就沿用舊值
-  $nextStatus = array_key_exists('status', $data) ? (int)$data['status'] : (int)$cur['status'];
-
-  // 若要上線/送審（0=待審核、1=上架）就強制檢查欄位
-  if ($nextStatus === 0 || $nextStatus === 1) {
-    $name        = array_key_exists('name',        $data) ? $tidy($data['name'])        : null;
-    $content     = array_key_exists('content',     $data) ? $tidy($data['content'])     : null;
-    $tag         = array_key_exists('tag',         $data) ? $tidy($data['tag'])         : null;
-    $cooked_time = array_key_exists('cooked_time', $data) ? $tidy($data['cooked_time']) : null;
-    $serving     = array_key_exists('serving',     $data) ? $tidy($data['serving'])     : null;
-    $image       = array_key_exists('image',       $data) ? $tidy($data['image'])       : $cur['image'];
-
-    // 若前端只改 status（審核流程），不會帶上述欄位，就從資料庫舊值補齊拿來驗證
-    if ($name === null || $content === null || $tag === null || $cooked_time === null || $serving === null) {
-      $q = $mysqli->prepare("SELECT name, content, tag, cooked_time, serving FROM recipe WHERE recipe_id = ?");
-      $q->bind_param('i', $recipe_id);
-      $q->execute();
-      $row = $q->get_result()->fetch_assoc();
-      $q->close();
-      if ($name        === null) $name        = $row['name']        ?? '';
-      if ($content     === null) $content     = $row['content']     ?? '';
-      if ($tag         === null) $tag         = $row['tag']         ?? '';
-      if ($cooked_time === null) $cooked_time = $row['cooked_time'] ?? '';
-      if ($serving     === null) $serving     = $row['serving']     ?? '';
-    }
-
-    // 具體檢查
-    $errors = [];
-    if ($name === '' || mb_strlen($name) > 15)         $errors[] = '標題必填且 ≤ 15 字';
-    if ($content === '' || mb_strlen($content) > 40)   $errors[] = '內文必填且 ≤ 40 字';
-    if ($tag === '' || strpos($tag, '#') === false)    $errors[] = '至少一個 TAG，如 #蛋#家常';
-    $allowTimes = ['5~10','10~15','15~30','30~60','60~120','120~180','180+'];
-    if (!in_array($cooked_time, $allowTimes, true))    $errors[] = '烹煮時間不合法';
-    $allowServings = ['1~2','3~4','5~6','7~8','9~10'];
-    if (!in_array($serving, $allowServings, true))     $errors[] = '料理份數不合法';
-    if (!$image)                                       $errors[] = '請上傳圖片';
-
-    if (!empty($errors)) throw new Exception('欄位驗證失敗：' . implode('；', $errors), 400);
+    $stmt_update = $mysqli->prepare($sql_update_recipe);
+    $stmt_update->bind_param($types, ...$params);
+    if (!$stmt_update->execute()) throw new Exception('更新食譜主資料失敗：' . $stmt_update->error, 500);
+    $stmt_update->close();
   }
-  // ---- 驗證結束 ----
 
-  $sql = "UPDATE recipe SET " . implode(', ', $set) . " WHERE recipe_id = ?";
-  $types .= 'i';
-  $params[] = $recipe_id;
+  // ==========================================================
+  // 【✅ 核心修正 ✅】
+  //  2. 處理食材和步驟的更新 (採用「先刪後增」策略)
+  // ==========================================================
+  
+  // 只有在前端 payload 中明確帶有 'ingredients' 鍵時，才執行更新
+  if (array_key_exists('ingredients', $data)) {
+    // a. 刪除所有舊的食材關聯
+    $stmt_del_ing = $mysqli->prepare("DELETE FROM ingredient_item WHERE recipe_id = ?");
+    $stmt_del_ing->bind_param("i", $recipe_id);
+    $stmt_del_ing->execute();
+    $stmt_del_ing->close();
 
-  $stmt = $mysqli->prepare($sql);
-  $stmt->bind_param($types, ...$params);
-  $stmt->execute();
-  if ($stmt->errno) throw new Exception('資料更新失敗：' . $stmt->error, 500);
-  $stmt->close();
+    // b. 重新插入新的食材關聯 (邏輯與 post_recipe.php 完全相同)
+    $ingredients = $data['ingredients'] ?? [];
+    if (!empty($ingredients) && is_array($ingredients)) {
+        $stmt_find = $mysqli->prepare("SELECT ingredient_id FROM ingredients WHERE name = ?");
+        $stmt_add_master = $mysqli->prepare("INSERT INTO ingredients (name) VALUES (?)");
+        $stmt_add_item = $mysqli->prepare("INSERT INTO ingredient_item (recipe_id, ingredient_id, name, serving) VALUES (?, ?, ?, ?)");
+        
+        foreach ($ingredients as $item) {
+            $ing_name = trim($item['name'] ?? ''); $ing_amount = trim($item['amount'] ?? '');
+            if (empty($ing_name) || empty($ing_amount)) continue;
+            
+            $stmt_find->bind_param("s", $ing_name); $stmt_find->execute(); $result = $stmt_find->get_result();
+            if ($row = $result->fetch_assoc()) { $ing_id = $row['ingredient_id']; } else {
+                $stmt_add_master->bind_param("s", $ing_name); $stmt_add_master->execute(); $ing_id = $stmt_add_master->insert_id;
+            }
+            $result->close();
+            
+            if ($ing_id) { $stmt_add_item->bind_param("iiss", $recipe_id, $ing_id, $ing_name, $ing_amount); $stmt_add_item->execute(); }
+        }
+        $stmt_find->close(); $stmt_add_master->close(); $stmt_add_item->close();
+    }
+  }
 
-  send_json(['status'=>'success','message'=>'食譜已更新']);
+  // 只有在前端 payload 中明確帶有 'steps' 鍵時，才執行更新
+  if (array_key_exists('steps', $data)) {
+    // a. 刪除所有舊的步驟
+    $stmt_del_steps = $mysqli->prepare("DELETE FROM steps WHERE recipe_id = ?");
+    $stmt_del_steps->bind_param("i", $recipe_id);
+    $stmt_del_steps->execute();
+    $stmt_del_steps->close();
+
+    // b. 重新插入新的步驟
+    $steps = $data['steps'] ?? [];
+    if (!empty($steps) && is_array($steps)) {
+        $stmt_step = $mysqli->prepare("INSERT INTO steps (recipe_id, `order`, content) VALUES (?, ?, ?)");
+        foreach ($steps as $step) {
+            $step_content = $step['content'] ?? null; $step_order = $step['order'] ?? 0;
+            if ($step_content) { $stmt_step->bind_param("iis", $recipe_id, $step_order, $step_content); $stmt_step->execute(); }
+        }
+        $stmt_step->close();
+    }
+  }
+
+  // ---- 提交交易 ----
+  $mysqli->commit();
+
+  send_json(['status'=>'success','message'=>'食譜已成功更新']);
 
 } catch (Throwable $e) {
+  // 如果中間任何一步出錯，就回滾所有操作
+  if (isset($mysqli) && $mysqli->ping()) $mysqli->rollback();
+
   $code = $e->getCode() ?: 500;
   $code = ($code>=400 && $code<600) ? $code : 500;
   send_json(['status'=>'fail','message'=>$e->getMessage()], $code);
 } finally {
   if (isset($mysqli)) $mysqli->close();
 }
+?>

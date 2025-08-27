@@ -20,7 +20,7 @@ try {
         exit();
     }
 
-    $query = "SELECT COUNT(*) AS count FROM `recipe_favorite` WHERE `member_id` = '{$memberId}' AND `recipe_id` = '{$recipeId}'";
+    $query = "SELECT COUNT(*) AS count FROM `recipe_favorite` WHERE `user_id` = '{$memberId}' AND `recipe_id` = '{$recipeId}'";
 
     $result = $mysqli->query($query);
 
