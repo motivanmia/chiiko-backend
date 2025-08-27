@@ -27,8 +27,11 @@ function extractImageFilenames($html) {
  * @return string
  */
 function stripHtmlTags($html) {
-    $text = strip_tags($html);
-    $text = preg_replace('/\s+/', ' ', $text);
+    if (!$html) return '';
+    // ✨ 修正：先將 </p> 替換為換行符號，確保分段被保留
+    $text = str_replace('</p>', "\n", $html);
+    // 然後再移除所有剩餘的 HTML 標籤
+    $text = strip_tags($text);
     return trim($text);
 }
 
