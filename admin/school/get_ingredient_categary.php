@@ -20,5 +20,5 @@
     'message' => '資料取得成功',
     'data' => $data
   ]);
-  $conn->close();
+  $mysqli->close();
 ?>
