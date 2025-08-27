@@ -14,24 +14,26 @@ if (empty($recipe_id)) {
 // 【✅ 核心校驗 ✅】
 // 確保 WHERE 條件中包含了 rc.status = 0，
 // 這會自動過濾掉所有被管理員設定為「隱藏」(status = 1) 的留言。
+// 💡 將參數直接嵌入 SQL 字串
 $sql = "SELECT 
             rc.comment_id, rc.user_id, rc.parent_id, rc.content, rc.image, rc.created_at,
             u.name AS member_name, 
             u.image AS member_avatar
         FROM recipe_comment rc
         JOIN users u ON rc.user_id = u.user_id
-        WHERE rc.recipe_id = ? AND rc.status = 0
+        WHERE rc.recipe_id = {$recipe_id} AND rc.status = 0
         ORDER BY rc.created_at ASC";
 
-$stmt = $mysqli->prepare($sql);
-if (!$stmt) {
+// 💡 替換成 mysqli_query
+$result = $mysqli->query($sql);
+if (!$result) {
     send_json(['status' => 'error', 'message' => '資料庫查詢失敗: ' . $mysqli->error], 500);
 }
 
-$stmt->bind_param('i', $recipe_id);
-$stmt->execute();
-$all_comments = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
-$stmt->close();
+// 💡 取得所有結果
+$all_comments = $result->fetch_all(MYSQLI_ASSOC);
+// 💡 釋放結果集
+$result->free();
 
 // 為所有圖片路徑加上完整的 URL 前綴 (保持不變)
 $base_url = 'http://localhost:8888';

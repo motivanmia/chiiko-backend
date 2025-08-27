@@ -35,87 +35,90 @@ try {
     }
 
     // --- 驗證食譜所有權 ---
-    $stmt_check = $mysqli->prepare("SELECT status, image FROM recipe WHERE recipe_id = ? AND user_id = ?");
-    $stmt_check->bind_param("ii", $recipe_id, $user_id);
-    $stmt_check->execute();
-    $result_check = $stmt_check->get_result();
+    // 💡 替換成 mysqli_query
+    $sql_check = "SELECT status, image FROM recipe WHERE recipe_id = {$recipe_id} AND user_id = {$user_id}";
+    $result_check = $mysqli->query($sql_check);
+    
+    if (!$result_check) {
+        throw new Exception('查詢食譜所有權失敗: ' . $mysqli->error, 500);
+    }
+    
     $cur = $result_check->fetch_assoc();
-    $stmt_check->close();
+    $result_check->free();
     
     if (!$cur) {
         throw new Exception('找不到食譜或您無權限修改此食譜', 404);
     }
     
     // --- 步驟 1: 更新主食譜資料 (recipe table) ---
-    // (這部分的邏輯與上一版相同)
     $set_clauses = [];
-    $bind_values = [];
-    $bind_types = '';
     $allowed_fields = ['recipe_category_id', 'name', 'content', 'serving', 'image', 'cooked_time', 'status', 'tag', 'manager_id'];
     foreach ($allowed_fields as $k) {
         if (array_key_exists($k, $data)) {
             $val = is_string($data[$k]) ? trim($data[$k]) : $data[$k];
+            
+            // 處理圖片 URL
             if ($k === 'image' && is_string($val)) {
                 $imageBaseUrl = IMG_BASE_URL . '/'; 
                 if (strpos($val, $imageBaseUrl) === 0) {
                     $val = str_replace($imageBaseUrl, '', $val);
                 }
             }
-            $set_clauses[] = "`{$k}` = ?";
-            $bind_values[] = $val;
-            $bind_types .= in_array($k, ['recipe_category_id', 'status', 'manager_id']) ? 'i' : 's';
+            
+            // 💡 使用 real_escape_string 處理字串
+            $safe_val = is_string($val) ? "'" . $mysqli->real_escape_string($val) . "'" : (is_null($val) ? "NULL" : $val);
+            $set_clauses[] = "`{$k}` = {$safe_val}";
         }
     }
+    
     if (!empty($set_clauses)) {
-        $sql = "UPDATE recipe SET " . implode(', ', $set_clauses) . " WHERE recipe_id = ? AND user_id = ?";
-        $bind_values[] = $recipe_id;
-        $bind_values[] = $user_id;
-        $bind_types .= 'ii';
-        $stmt_update = $mysqli->prepare($sql);
-        $stmt_update->bind_param($bind_types, ...$bind_values);
-        if (!$stmt_update->execute()) {
-            throw new Exception('主食譜資料更新失敗：' . $stmt_update->error, 500);
+        // 💡 替換成 mysqli_query
+        $sql = "UPDATE recipe SET " . implode(', ', $set_clauses) . " WHERE recipe_id = {$recipe_id} AND user_id = {$user_id}";
+        if (!$mysqli->query($sql)) {
+            throw new Exception('主食譜資料更新失敗：' . $mysqli->error, 500);
         }
-        $stmt_update->close();
     }
 
     // --- ✅ 步驟 2: 更新食材 (ingredient_item table) ---
-    // 2a. 先刪除所有與此食譜相關的舊食材
-    $stmt_delete_ing = $mysqli->prepare("DELETE FROM ingredient_item WHERE recipe_id = ?");
-    $stmt_delete_ing->bind_param("i", $recipe_id);
-    $stmt_delete_ing->execute();
-    $stmt_delete_ing->close();
+    // 💡 2a. 先刪除所有與此食譜相關的舊食材
+    $mysqli->query("DELETE FROM ingredient_item WHERE recipe_id = {$recipe_id}");
+    if ($mysqli->errno) {
+        throw new Exception('刪除舊食材失敗: ' . $mysqli->error, 500);
+    }
 
-    // 2b. 插入從前端傳來的新食材
+    // 💡 2b. 插入從前端傳來的新食材
     if (isset($data['ingredients']) && is_array($data['ingredients'])) {
-        $stmt_insert_ing = $mysqli->prepare("INSERT INTO ingredient_item (recipe_id, name, serving) VALUES (?, ?, ?)");
         foreach ($data['ingredients'] as $ingredient) {
             if (!empty($ingredient['name']) && !empty($ingredient['amount'])) {
-                $stmt_insert_ing->bind_param("iss", $recipe_id, $ingredient['name'], $ingredient['amount']);
-                $stmt_insert_ing->execute();
+                $safe_name = $mysqli->real_escape_string($ingredient['name']);
+                $safe_amount = $mysqli->real_escape_string($ingredient['amount']);
+                $mysqli->query("INSERT INTO ingredient_item (recipe_id, name, serving) VALUES ({$recipe_id}, '{$safe_name}', '{$safe_amount}')");
+                if ($mysqli->errno) {
+                    throw new Exception('新增食材失敗: ' . $mysqli->error, 500);
+                }
             }
         }
-        $stmt_insert_ing->close();
     }
 
     // --- ✅ 步驟 3: 更新料理步驟 (steps table) ---
-    // 3a. 先刪除所有與此食譜相關的舊步驟
-    $stmt_delete_steps = $mysqli->prepare("DELETE FROM steps WHERE recipe_id = ?");
-    $stmt_delete_steps->bind_param("i", $recipe_id);
-    $stmt_delete_steps->execute();
-    $stmt_delete_steps->close();
+    // 💡 3a. 先刪除所有與此食譜相關的舊步驟
+    $mysqli->query("DELETE FROM steps WHERE recipe_id = {$recipe_id}");
+    if ($mysqli->errno) {
+        throw new Exception('刪除舊步驟失敗: ' . $mysqli->error, 500);
+    }
 
-    // 3b. 插入從前端傳來的新步驟
+    // 💡 3b. 插入從前端傳來的新步驟
     if (isset($data['steps']) && is_array($data['steps'])) {
-        $stmt_insert_steps = $mysqli->prepare("INSERT INTO steps (recipe_id, `order`, content) VALUES (?, ?, ?)");
         foreach ($data['steps'] as $index => $step_content) {
             if (!empty(trim($step_content))) {
                 $order = $index + 1; // 順序從 1 開始
-                $stmt_insert_steps->bind_param("iis", $recipe_id, $order, $step_content);
-                $stmt_insert_steps->execute();
+                $safe_content = $mysqli->real_escape_string($step_content);
+                $mysqli->query("INSERT INTO steps (recipe_id, `order`, content) VALUES ({$recipe_id}, {$order}, '{$safe_content}')");
+                if ($mysqli->errno) {
+                    throw new Exception('新增步驟失敗: ' . $mysqli->error, 500);
+                }
             }
         }
-        $stmt_insert_steps->close();
     }
 
     // --- 如果所有操作都成功，提交交易 ---

@@ -5,7 +5,9 @@ require_once __DIR__ . '/../../common/conn.php';
 require_once __DIR__ . '/../../common/cors.php';
 require_once __DIR__ . '/../../common/functions.php';
 
-if (session_status() === PHP_SESSION_NONE) { session_start(); }
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
 require_method('POST');
 
 if (!isset($_SESSION['user_id'])) {
@@ -32,39 +34,39 @@ if (!in_array($report_type, $allowed_types, true)) {
 $report_content = null; // 初始化變數
 
 try {
-    // 第一步：根據 reported_comment_id 查詢出原始留言的 content
-    $sql_find_content = "SELECT content FROM recipe_comment WHERE comment_id = ? LIMIT 1";
-    $stmt_find = $mysqli->prepare($sql_find_content);
-    if (!$stmt_find) throw new Exception('準備查詢留言內容失敗');
+    // 💡 第一步：根據 reported_comment_id 查詢出原始留言的 content
+    // 使用 mysqli_query 並直接嵌入變數
+    $sql_find_content = "SELECT content FROM recipe_comment WHERE comment_id = {$reported_comment_id} LIMIT 1";
+    $result = $mysqli->query($sql_find_content);
+    
+    if (!$result) {
+        throw new Exception('查詢留言內容失敗');
+    }
 
-    $stmt_find->bind_param('i', $reported_comment_id);
-    $stmt_find->execute();
-    $result = $stmt_find->get_result();
     $comment_data = $result->fetch_assoc();
-    $stmt_find->close();
+    $result->free();
 
     if ($comment_data && isset($comment_data['content'])) {
         $report_content = $comment_data['content'];
     } else {
-        // 如果找不到對應的留言 (可能已被刪除)，我們就給一個預設值
         $report_content = '[原始留言已被刪除]';
     }
 
-    // 第二步：將包含真實留言內容的檢舉資料寫入資料庫
+    // 💡 第二步：將包含真實留言內容的檢舉資料寫入資料庫
+    // 使用 mysqli_query 並直接嵌入變數
+    $safe_content = $mysqli->real_escape_string($report_content);
     $sql_insert = "INSERT INTO comment_report (reported_user_id, reported_comment_id, content, type, status) 
-                   VALUES (?, ?, ?, ?, 0)";
+                   VALUES ('{$reporter_user_id}', '{$reported_comment_id}', '{$safe_content}', '{$report_type}', 0)";
 
-    $stmt_insert = $mysqli->prepare($sql_insert);
-    if (!$stmt_insert) throw new Exception('準備寫入檢舉資料失敗');
-
-    $stmt_insert->bind_param('iisi', $reporter_user_id, $reported_comment_id, $report_content, $report_type);
-    
-    if ($stmt_insert->execute() && $stmt_insert->affected_rows > 0) {
-        send_json(['status' => 'success', 'message' => '檢舉已成功送出！感謝您的回報。'], 201);
+    if ($mysqli->query($sql_insert)) {
+        if ($mysqli->affected_rows > 0) {
+            send_json(['status' => 'success', 'message' => '檢舉已成功送出！感謝您的回報。'], 201);
+        } else {
+            throw new Exception('檢舉提交失敗，您可能已經檢舉過此留言');
+        }
     } else {
-        throw new Exception('檢舉提交失敗，您可能已經檢舉過此留言');
+        throw new Exception('寫入檢舉資料失敗：' . $mysqli->error);
     }
-    $stmt_insert->close();
 
 } catch (Exception $e) {
     // 捕捉任何資料庫操作的錯誤

@@ -9,8 +9,6 @@ header('Content-Type: application/json; charset=utf-8');
 ini_set('display_errors', 0);
 ini_set('log_errors', 1);
 
-mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
-
 try {
   $raw = file_get_contents('php://input');
   if ($raw === false) throw new Exception('Cannot read request body');
@@ -23,11 +21,11 @@ try {
 
   $origin = null;
   {
-    $q = $mysqli->prepare("SELECT ingredients_category_id, name FROM `ingredients` WHERE `ingredient_id` = ? LIMIT 1");
-    $q->bind_param('i', $id);
-    $q->execute();
-    $origin = $q->get_result()->fetch_assoc();
-    $q->close();
+    $sql_origin = "SELECT ingredients_category_id, name FROM `ingredients` WHERE `ingredient_id` = {$id} LIMIT 1";
+    $res_origin = $mysqli->query($sql_origin);
+    if ($res_origin === false) throw new Exception('查詢原始資料失敗：' . $mysqli->error, 500);
+    $origin = $res_origin->fetch_assoc();
+    $res_origin->free();
     if (!$origin) {
       send_json(['status'=>'fail','message'=>'找不到該食材'], 404);
     }
@@ -35,89 +33,81 @@ try {
 
   // 正規化工具
   $toJson = function ($val) {
-    if (is_array($val))  return json_encode($val, JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);
+    if (is_array($val)) return json_encode($val, JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);
     if (is_string($val)) return json_encode([$val], JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);
-    return null; 
+    return 'NULL'; // 返回 'NULL' 字串而非 null 值，用於 SQL
   };
 
+  // 檢查名稱是否重複
   if (array_key_exists('name', $payload)) {
     $newName = trim((string)$payload['name']);
     if ($newName === '') {
       send_json(['status'=>'fail','message'=>'name 不可為空','field'=>'name'], 400);
     }
 
-    $dupSql = "SELECT 1 FROM `ingredients` WHERE `name` = ? AND `ingredient_id` <> ? LIMIT 1";
-    $dupStmt = $mysqli->prepare($dupSql);
-    $dupStmt->bind_param("si", $newName, $id);
+    $safeName = $mysqli->real_escape_string($newName);
+    $dupSql = "SELECT 1 FROM `ingredients` WHERE `name` = '{$safeName}' AND `ingredient_id` <> {$id} LIMIT 1";
+    $dupRes = $mysqli->query($dupSql);
+    if ($dupRes === false) throw new Exception('查詢重複名稱失敗：' . $mysqli->error, 500);
 
-    $dupStmt->execute();
-    $dupStmt->store_result();
-    if ($dupStmt->num_rows > 0) {
-      $dupStmt->close();
+    if ($dupRes->num_rows > 0) {
+      $dupRes->free();
       send_json([
         'status'  => 'fail',
         'message' => '名稱已存在，請更換 name',
         'field'   => 'name'
       ], 409);
     }
-    $dupStmt->close();
+    $dupRes->free();
   }
 
   // —— 動態組 UPDATE —— 
-  $fields = [];
-  $types  = '';
-  $params = [];
-
+  $updates = [];
   if (array_key_exists('ingredients_category_id', $payload)) {
-    $fields[] = '`ingredients_category_id` = ?';
-    $types   .= 'i';
-    $params[] = (int)$payload['ingredients_category_id'];
+    $categoryId = (int)$payload['ingredients_category_id'];
+    $updates[] = "`ingredients_category_id` = {$categoryId}";
   }
   if (array_key_exists('name', $payload)) {
-    $fields[] = '`name` = ?';
-    $types   .= 's';
-    $params[] = trim((string)$payload['name']);
+    $safeName = $mysqli->real_escape_string(trim((string)$payload['name']));
+    $updates[] = "`name` = '{$safeName}'";
   }
   if (array_key_exists('image', $payload)) {
-    $fields[] = '`image` = ?';
-    $types   .= 's';
-    $params[] = $toJson($payload['image']);
+    $imageJson = $toJson($payload['image']);
+    $updates[] = "`image` = '{$imageJson}'";
   }
   if (array_key_exists('status', $payload)) {
-    $fields[] = '`status` = ?';
-    $types   .= 's';
-    $params[] = (string)$payload['status'];
+    $safeStatus = $mysqli->real_escape_string((string)$payload['status']);
+    $updates[] = "`status` = '{$safeStatus}'";
   }
   if (array_key_exists('storage_method', $payload)) {
-    $fields[] = '`storage_method` = ?';
-    $types   .= 's';
-    $params[] = (string)$payload['storage_method'];
+    $safeStorage = $mysqli->real_escape_string((string)$payload['storage_method']);
+    $updates[] = "`storage_method` = '{$safeStorage}'";
   }
   if (array_key_exists('content', $payload)) {
-    $fields[] = '`content` = ?';
-    $types   .= 's';
-    $params[] = $toJson($payload['content']);
+    $contentJson = $toJson($payload['content']);
+    $updates[] = "`content` = '{$contentJson}'";
   }
 
-  if (empty($fields)) {
+  if (empty($updates)) {
     send_json(['status'=>'success','message'=>'沒有任何更新','updated'=>0],200);
   }
 
-  $sql = "UPDATE `ingredients` SET " . implode(', ', $fields) . " WHERE `ingredient_id` = ?";
-  $types .= 'i';
-  $params[] = $id;
+  $sql = "UPDATE `ingredients` SET " . implode(', ', $updates) . " WHERE `ingredient_id` = {$id}";
 
-  $stmt = $mysqli->prepare($sql);
-  $stmt->bind_param($types, ...$params);
-  $stmt->execute();
-  $affected = $stmt->affected_rows;
-  $stmt->close();
+  $mysqli->begin_transaction();
+  $res = $mysqli->query($sql);
+  if ($res === false) {
+    throw new Exception('更新失敗：' . $mysqli->error, 500);
+  }
+  $affected = $mysqli->affected_rows;
 
   // 回查
-  $res = db_query($mysqli, "SELECT * FROM `ingredients` WHERE `ingredient_id` = " . (int)$id);
+  $res = $mysqli->query("SELECT * FROM `ingredients` WHERE `ingredient_id` = {$id}");
+  if ($res === false) throw new Exception('回查失敗：' . $mysqli->error, 500);
   $row = $res->fetch_assoc() ?: [];
+  $res->free();
 
-  $mysqli->close();
+  $mysqli->commit();
 
   send_json([
     'status'  => 'success',
@@ -126,23 +116,21 @@ try {
     'data'    => $row,
   ], 200);
 
-} catch (mysqli_sql_exception $e) {
-  if ($e->getCode() === 1062) {
-    send_json([
-      'status'  => 'fail',
-      'message' => '名稱已存在，請更換 name',
-      'field'   => 'name'
-    ], 409);
-  }
-  send_json([
-    'status'  => 'fail',
-    'message' => 'Server error',
-    'error'   => $e->getMessage(),
-  ], 500);
 } catch (Throwable $e) {
+  if (isset($mysqli)) $mysqli->rollback();
+  $code = ($e->getCode() >= 400 && $e->getCode() < 600) ? $e->getCode() : 500;
+  $message = $e->getMessage();
+  // 特殊處理唯一鍵重複錯誤
+  if (strpos($message, 'Duplicate entry') !== false && strpos($message, 'for key') !== false) {
+    $message = '名稱已存在，請更換 name';
+    $code = 409;
+  }
+  
   send_json([
     'status'  => 'fail',
-    'message' => 'Server error',
+    'message' => $message,
     'error'   => $e->getMessage(),
-  ], 500);
+  ], $code);
+} finally {
+  if (isset($mysqli)) $mysqli->close();
 }

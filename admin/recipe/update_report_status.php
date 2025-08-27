@@ -5,7 +5,9 @@ require_once __DIR__ . '/../../common/conn.php';
 require_once __DIR__ . '/../../common/cors.php';
 require_once __DIR__ . '/../../common/functions.php';
 
-if (session_status() === PHP_SESSION_NONE) { session_start(); }
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
 require_method('POST');
 
 if (!isset($_SESSION['manager_id'])) {
@@ -32,45 +34,36 @@ if (!in_array($new_status, $allowed_statuses)) {
 $mysqli->autocommit(FALSE);
 
 try {
-    // === 第一步：更新 comment_report 表的狀態 (與之前相同) ===
-    $sql_update_report = "UPDATE comment_report SET status = ? WHERE report_id = ?";
-    $stmt_report = $mysqli->prepare($sql_update_report);
-    if (!$stmt_report) throw new Exception('準備更新檢舉狀態失敗: ' . $mysqli->error);
-    
-    $stmt_report->bind_param('ii', $new_status, $report_id);
-    if (!$stmt_report->execute()) throw new Exception('執行更新檢舉狀態失敗: ' . $stmt_report->error);
-    $stmt_report->close();
-
+    // === 第一步：更新 comment_report 表的狀態 ===
+    // 💡 替換成 mysqli_query，並直接嵌入變數
+    $sql_update_report = "UPDATE comment_report SET status = {$new_status} WHERE report_id = {$report_id}";
+    if (!$mysqli->query($sql_update_report)) {
+        throw new Exception('執行更新檢舉狀態失敗: ' . $mysqli->error);
+    }
 
     // === 第二步：聯動更新 recipe_comment 表的狀態 ===
-    // 我們需要先從 comment_report 表中找出被檢舉的留言 ID (reported_comment_id)
-    $sql_find_comment_id = "SELECT reported_comment_id FROM comment_report WHERE report_id = ? LIMIT 1";
-    $stmt_find = $mysqli->prepare($sql_find_comment_id);
-    if (!$stmt_find) throw new Exception('準備查詢留言ID失敗: ' . $mysqli->error);
+    // 💡 替換成 mysqli_query
+    $sql_find_comment_id = "SELECT reported_comment_id FROM comment_report WHERE report_id = {$report_id} LIMIT 1";
+    $result = $mysqli->query($sql_find_comment_id);
+
+    if (!$result) {
+        throw new Exception('查詢留言ID失敗: ' . $mysqli->error);
+    }
     
-    $stmt_find->bind_param('i', $report_id);
-    $stmt_find->execute();
-    $result = $stmt_find->get_result();
     $report_data = $result->fetch_assoc();
-    $stmt_find->close();
+    $result->free();
 
     if ($report_data && !empty($report_data['reported_comment_id'])) {
         $comment_to_update_id = $report_data['reported_comment_id'];
 
-        // 根據新的檢舉狀態，決定留言的狀態
-        // 檢舉狀態 1 (已下架) -> 留言狀態 1 (隱藏)
-        // 檢舉狀態 0 (待處理) 或 2 (已恢復) -> 留言狀態 0 (正常)
         $new_comment_status = ($new_status === 1) ? 1 : 0;
-
-        $sql_update_comment = "UPDATE recipe_comment SET status = ? WHERE comment_id = ?";
-        $stmt_comment = $mysqli->prepare($sql_update_comment);
-        if (!$stmt_comment) throw new Exception('準備更新留言狀態失敗: ' . $mysqli->error);
-
-        $stmt_comment->bind_param('ii', $new_comment_status, $comment_to_update_id);
-        if (!$stmt_comment->execute()) throw new Exception('執行更新留言狀態失敗: ' . $stmt_comment->error);
-        $stmt_comment->close();
+        
+        // 💡 替換成 mysqli_query，並直接嵌入變數
+        $sql_update_comment = "UPDATE recipe_comment SET status = {$new_comment_status} WHERE comment_id = {$comment_to_update_id}";
+        if (!$mysqli->query($sql_update_comment)) {
+            throw new Exception('執行更新留言狀態失敗: ' . $mysqli->error);
+        }
     } else {
-        // 雖然不太可能發生，但如果找不到檢舉記錄，就拋出錯誤
         throw new Exception('找不到對應的檢舉記錄');
     }
 

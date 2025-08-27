@@ -44,78 +44,73 @@ try {
     $mysqli->begin_transaction();
 
     // 1. 新增主食譜資料
-    $sql_recipe = "INSERT INTO recipe (user_id, manager_id, recipe_category_id, name, content, serving, image, cooked_time, status, tag, views, created_at) VALUES (NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())";
-    $stmt_recipe = $mysqli->prepare($sql_recipe);
-    if (!$stmt_recipe) throw new Exception("SQL 預處理失敗: " . $mysqli->error, 500);
+    $sql_recipe = "INSERT INTO recipe (user_id, manager_id, recipe_category_id, name, content, serving, image, cooked_time, status, tag, views, created_at) VALUES (NULL, '{$manager_id}', '{$recipe_category_id}', '{$mysqli->real_escape_string($name)}', '{$mysqli->real_escape_string($content)}', '{$mysqli->real_escape_string($serving)}', '{$mysqli->real_escape_string($image)}', '{$mysqli->real_escape_string($cooked_time)}', '{$status_code}', '{$mysqli->real_escape_string($tag)}', '{$views}', NOW())";
     
-    $types = "iisssssisi";
-    $stmt_recipe->bind_param($types, $manager_id, $recipe_category_id, $name, $content, $serving, $image, $cooked_time, $status_code, $tag, $views);
-    if (!$stmt_recipe->execute()) throw new Exception("新增食譜主資料失敗: " . $stmt_recipe->error, 500);
+    if (!$mysqli->query($sql_recipe)) {
+        throw new Exception("新增食譜主資料失敗: " . $mysqli->error, 500);
+    }
     
-    $new_recipe_id = $stmt_recipe->insert_id;
-    $stmt_recipe->close();
+    $new_recipe_id = $mysqli->insert_id;
 
     // 2. 新增食材資料 (帶有比對和自動新增邏輯)
     if (!empty($ingredients) && is_array($ingredients)) {
-        $stmt_find = $mysqli->prepare("SELECT ingredient_id FROM ingredients WHERE name = ?");
-        $stmt_add_master = $mysqli->prepare("INSERT INTO ingredients (name) VALUES (?)");
-        $stmt_add_item = $mysqli->prepare("INSERT INTO ingredient_item (recipe_id, ingredient_id, name, serving) VALUES (?, ?, ?, ?)");
-        
-        if (!$stmt_find || !$stmt_add_master || !$stmt_add_item) {
-            throw new Exception("食材相關 SQL 預處理失敗: " . $mysqli->error, 500);
-        }
-        
         foreach ($ingredients as $item) {
             $ing_name = trim($item['name'] ?? '');
             $ing_amount = trim($item['amount'] ?? '');
             if (empty($ing_name) || empty($ing_amount)) continue;
             
-            $stmt_find->bind_param("s", $ing_name);
-            $stmt_find->execute();
-            $result = $stmt_find->get_result();
-            if ($row = $result->fetch_assoc()) {
+            $ing_id = null;
+            $safe_ing_name = $mysqli->real_escape_string($ing_name);
+            $sql_find = "SELECT ingredient_id FROM ingredients WHERE name = '{$safe_ing_name}'";
+            $result = $mysqli->query($sql_find);
+
+            if ($result && $row = $result->fetch_assoc()) {
                 $ing_id = $row['ingredient_id'];
+                $result->free();
             } else {
-                $stmt_add_master->bind_param("s", $ing_name);
-                if (!$stmt_add_master->execute()) throw new Exception("自動新增主食材 '{$ing_name}' 失敗: " . $stmt_add_master->error, 500);
-                $ing_id = $stmt_add_master->insert_id;
+                $sql_add_master = "INSERT INTO ingredients (name) VALUES ('{$safe_ing_name}')";
+                if (!$mysqli->query($sql_add_master)) {
+                    throw new Exception("自動新增主食材 '{$ing_name}' 失敗: " . $mysqli->error, 500);
+                }
+                $ing_id = $mysqli->insert_id;
             }
-            $result->close();
             
             if ($ing_id) {
-                $stmt_add_item->bind_param("iiss", $new_recipe_id, $ing_id, $ing_name, $ing_amount);
-                if (!$stmt_add_item->execute()) throw new Exception("新增食材項目關聯失敗: " . $stmt_add_item->error, 500);
+                $safe_ing_amount = $mysqli->real_escape_string($ing_amount);
+                $sql_add_item = "INSERT INTO ingredient_item (recipe_id, ingredient_id, name, serving) VALUES ('{$new_recipe_id}', '{$ing_id}', '{$safe_ing_name}', '{$safe_ing_amount}')";
+                if (!$mysqli->query($sql_add_item)) {
+                    throw new Exception("新增食材項目關聯失敗: " . $mysqli->error, 500);
+                }
             }
         }
-        $stmt_find->close();
-        $stmt_add_master->close();
-        $stmt_add_item->close();
     }
 
     // 3. 新增步驟資料
     if (!empty($steps) && is_array($steps)) {
-        $stmt_step = $mysqli->prepare("INSERT INTO steps (recipe_id, `order`, content) VALUES (?, ?, ?)");
-        if (!$stmt_step) throw new Exception("步驟 SQL 預處理失敗: " . $mysqli->error, 500);
-        
         foreach ($steps as $step) {
             $step_content = $step['content'] ?? null;
             $step_order = $step['order'] ?? 0;
             if ($step_content) {
-                $stmt_step->bind_param("iis", $new_recipe_id, $step_order, $step_content);
-                if (!$stmt_step->execute()) throw new Exception("新增步驟失敗: " . $stmt_step->error, 500);
+                $safe_step_content = $mysqli->real_escape_string($step_content);
+                $sql_step = "INSERT INTO steps (recipe_id, `order`, content) VALUES ('{$new_recipe_id}', '{$step_order}', '{$safe_step_content}')";
+                if (!$mysqli->query($sql_step)) {
+                    throw new Exception("新增步驟失敗: " . $mysqli->error, 500);
+                }
             }
         }
-        $stmt_step->close();
     }
 
     $mysqli->commit();
     send_json(['status' => 'success', 'message' => '食譜新增成功！', 'recipe_id' => $new_recipe_id], 201);
 
 } catch (Throwable $e) {
-    if (isset($mysqli) && $mysqli->ping()) $mysqli->rollback();
+    if (isset($mysqli) && $mysqli->ping()) {
+        @$mysqli->rollback();
+    }
     $code = is_numeric($e->getCode()) && $e->getCode() > 300 ? $e->getCode() : 500;
     send_json(['status' => 'fail', 'message' => $e->getMessage() ?: '伺服器發生未預期錯誤'], $code);
 } finally {
-    if (isset($mysqli)) $mysqli->close();
+    if (isset($mysqli)) {
+        $mysqli->close();
+    }
 }
-?>

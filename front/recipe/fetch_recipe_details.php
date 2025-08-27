@@ -1,5 +1,5 @@
 <?php
-//食譜詳細按紐點選撈食譜id相關所有內文資料用
+// 食譜詳細按鈕點選，撈食譜ID相關所有內文資料用
 
 ini_set('display_errors', 1);
 ini_set('display_startup_errors', 1);
@@ -12,7 +12,6 @@ require_once __DIR__ . '/../../common/functions.php';
 // 設定回應標頭為 JSON
 header('Content-Type: application/json');
 
-
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     try {
         // 從 URL 參數中取得 recipe_id (例如: ?recipe_id=123)
@@ -24,23 +23,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
 
         $recipe_id = (int)$_GET['recipe_id'];
 
-
-        $stmt_recipe = $mysqli->prepare("SELECT * FROM `recipe` WHERE `recipe_id` = ?");
-        $stmt_recipe->bind_param("i", $recipe_id);
-        $stmt_recipe->execute();
-        $result_recipe = $stmt_recipe->get_result();
+        // 💡 1. 查詢主食譜資料
+        $sql_recipe = "SELECT * FROM `recipe` WHERE `recipe_id` = {$recipe_id}";
+        $result_recipe = $mysqli->query($sql_recipe);
+        
+        if (!$result_recipe) {
+            http_response_code(500);
+            echo json_encode(['status' => 'fail', 'message' => '資料庫查詢失敗: ' . $mysqli->error]);
+            exit();
+        }
+        
         $recipe_data = $result_recipe->fetch_assoc();
-        $stmt_recipe->close();
+        $result_recipe->free();
 
-        // 如果找不到主食譜，就直接回傳錯誤
         if (!$recipe_data) {
             http_response_code(404); // Not Found
             echo json_encode(['status' => 'fail', 'message' => '找不到指定的食譜']);
             exit();
         }
 
-        // ✅ --- 2. 查詢相關的食材項目 (已修正) ---
-        // 使用 LEFT JOIN，根據 ingredient_id 去 `ingredients` 表中取得食材的 `name`
+        // ✅ --- 2. 查詢相關的食材項目 ---
+        // 💡 替換成 mysqli_query
         $sql_ingredients = "
             SELECT 
                 ii.serving, 
@@ -50,29 +53,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             LEFT JOIN 
                 `ingredients` AS i ON ii.ingredient_id = i.ingredient_id
             WHERE 
-                ii.recipe_id = ?
+                ii.recipe_id = {$recipe_id}
         ";
         
-        $stmt_ingredients = $mysqli->prepare($sql_ingredients);
-        $stmt_ingredients->bind_param("i", $recipe_id);
-        $stmt_ingredients->execute();
-        $result_ingredients = $stmt_ingredients->get_result();
+        $result_ingredients = $mysqli->query($sql_ingredients);
         $ingredients = [];
-        while ($row = $result_ingredients->fetch_assoc()) {
-            $ingredients[] = $row;
+        if ($result_ingredients) {
+            while ($row = $result_ingredients->fetch_assoc()) {
+                $ingredients[] = $row;
+            }
+            $result_ingredients->free();
         }
-        $stmt_ingredients->close();
 
-        // --- 3. 查詢相關的步驟 (維持不變) ---
-        $stmt_steps = $mysqli->prepare("SELECT * FROM `steps` WHERE `recipe_id` = ? ORDER BY `order` ASC");
-        $stmt_steps->bind_param("i", $recipe_id);
-        $stmt_steps->execute();
-        $result_steps = $stmt_steps->get_result();
+        // --- 3. 查詢相關的步驟 ---
+        // 💡 替換成 mysqli_query
+        $sql_steps = "SELECT * FROM `steps` WHERE `recipe_id` = {$recipe_id} ORDER BY `order` ASC";
+        $result_steps = $mysqli->query($sql_steps);
         $steps = [];
-        while ($row = $result_steps->fetch_assoc()) {
-            $steps[] = $row;
+        if ($result_steps) {
+            while ($row = $result_steps->fetch_assoc()) {
+                $steps[] = $row;
+            }
+            $result_steps->free();
         }
-        $stmt_steps->close();
 
         // --- 組合所有資料 (維持不變) ---
         $full_recipe_details = $recipe_data;
@@ -94,4 +97,3 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     http_response_code(405); // Method Not Allowed
     echo json_encode(['error' => '僅允許 GET 方法']);
 }
-?>

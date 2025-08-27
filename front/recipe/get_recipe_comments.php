@@ -13,21 +13,25 @@ if (empty($recipe_id)) {
     send_json(['status' => 'error', 'message' => 'Missing recipe_id'], 400); 
 }
 
-// SQL 查詢 (保持不變)
+// 💡 將 prepare 和 bind_param 替換為 mysqli_query
 $sql = "SELECT 
             rc.comment_id, rc.user_id, rc.parent_id, rc.content, rc.image, rc.created_at,
             u.name AS member_name, 
             u.image AS member_avatar
         FROM recipe_comment rc
         JOIN users u ON rc.user_id = u.user_id
-        WHERE rc.recipe_id = ? AND rc.status = 0
+        WHERE rc.recipe_id = {$recipe_id} AND rc.status = 0
         ORDER BY rc.created_at ASC";
 
-$stmt = $mysqli->prepare($sql);
-$stmt->bind_param('i', $recipe_id);
-$stmt->execute();
-$all_comments = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
-$stmt->close();
+$result = $mysqli->query($sql);
+
+if (!$result) {
+    send_json(['status' => 'error', 'message' => '資料庫查詢失敗: ' . $mysqli->error], 500);
+    exit();
+}
+
+$all_comments = $result->fetch_all(MYSQLI_ASSOC);
+$result->free();
 
 // 【✅ 核心修正 ✅】
 // 為所有圖片路徑加上完整的 URL 前綴

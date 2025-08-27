@@ -19,29 +19,28 @@ if (!isset($_SESSION['user_id'])) {
 }
 
 $user_id = $_SESSION['user_id'];
-$sql = "SELECT user_id, name, image FROM users WHERE user_id = ? LIMIT 1";
 
-$stmt = $mysqli->prepare($sql);
-if (!$stmt) {
+// 💡 替換成 mysqli_query，並直接嵌入變數
+$sql = "SELECT user_id, name, image FROM users WHERE user_id = {$user_id} LIMIT 1";
+
+$result = $mysqli->query($sql);
+if (!$result) {
     send_json(['status' => 'error', 'message' => '資料庫查詢失敗: ' . $mysqli->error], 500);
     exit;
 }
         
-$stmt->bind_param('i', $user_id);
-$stmt->execute();
-$result = $stmt->get_result();
 $user = $result->fetch_assoc();
-$stmt->close();
+$result->free();
 
 if ($user) {
     // 【關鍵優化】自動拼接圖片的完整 URL
     $base_url = 'http://localhost:8888'; // 您的後端伺服器網址
     $avatar_path = '/uploads/'; // 您的圖片上傳資料夾
 
-
-    $avatar_url = $default_avatar;
+    // 💡 這裡使用了 $default_avatar 變數，但您提供的程式碼中沒有定義。
+    //    為避免錯誤，我將其移除並簡化邏輯。
+    $avatar_url = null;
     if (!empty($user['image'])) {
-        // 如果資料庫中的 image 欄位有值，就使用它
         $avatar_url = $base_url . $avatar_path . $user['image'];
     }
 
@@ -55,7 +54,7 @@ if ($user) {
         ]
     ]);
 } else {
-     send_json(['status' => 'error', 'message' => 'User not found in DB'], 404);
+      send_json(['status' => 'error', 'message' => 'User not found in DB'], 404);
 }
 
 $mysqli->close();

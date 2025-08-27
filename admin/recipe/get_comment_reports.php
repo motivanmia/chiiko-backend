@@ -5,7 +5,9 @@ require_once __DIR__ . '/../../common/conn.php';
 require_once __DIR__ . '/../../common/cors.php';
 require_once __DIR__ . '/../../common/functions.php';
 
-if (session_status() === PHP_SESSION_NONE) { session_start(); }
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
 require_method('GET');
 
 if (!isset($_SESSION['manager_id'])) {
@@ -27,15 +29,22 @@ $sql = "SELECT
         LEFT JOIN users u_offender ON rc.user_id = u_offender.user_id
         ORDER BY cr.created_at DESC";
 
-$stmt = $mysqli->prepare($sql);
-if (!$stmt) {
+// 💡 將 prepare 和 execute 替換為 mysqli_query
+$result = $mysqli->query($sql);
+
+if (!$result) {
+    // 檢查查詢是否失敗，並提供錯誤訊息
     send_json(['status' => 'error', 'message' => '資料庫查詢失敗: ' . $mysqli->error], 500);
 }
-$stmt->execute();
-$result = $stmt->get_result();
+
+// 💡 取得所有結果
 $reports = $result->fetch_all(MYSQLI_ASSOC);
-$stmt->close();
+
+// 💡 釋放結果集
+$result->free();
 
 send_json(['status' => 'success', 'data' => $reports]);
+
+// 💡 關閉資料庫連線
 $mysqli->close();
-?>```
+?>

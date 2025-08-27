@@ -19,26 +19,30 @@ try {
     if (!$recipe_id || $recipe_id <= 0) {
         throw new Exception('未提供有效的食譜 ID', 400);
     }
+    
+    // 將 recipe_id 轉換為安全的整數，防止 SQL 注入
+    $safe_recipe_id = (int)$recipe_id;
 
     // ==========================================================
-    //  1. 查詢主食譜資料 (您的 JOIN 寫法很好，保持並優化)
+    // 1. 查詢主食譜資料 (已修改為 mysqli_query)
     // ==========================================================
     $sql_recipe = "SELECT 
-                    r.*, 
-                    COALESCE(u.name, m.name) AS author_name, 
-                    rc.name AS category_name
-                FROM `recipe` r
-                LEFT JOIN `users` u ON r.user_id = u.user_id
-                LEFT JOIN `managers` m ON r.manager_id = m.manager_id
-                LEFT JOIN `recipe_category` rc ON r.recipe_category_id = rc.recipe_category_id
-                WHERE r.recipe_id = ?";
+                        r.*, 
+                        COALESCE(u.name, m.name) AS author_name, 
+                        rc.name AS category_name
+                    FROM `recipe` r
+                    LEFT JOIN `users` u ON r.user_id = u.user_id
+                    LEFT JOIN `managers` m ON r.manager_id = m.manager_id
+                    LEFT JOIN `recipe_category` rc ON r.recipe_category_id = rc.recipe_category_id
+                    WHERE r.recipe_id = {$safe_recipe_id}";
     
-    $stmt_recipe = $mysqli->prepare($sql_recipe);
-    $stmt_recipe->bind_param("i", $recipe_id);
-    $stmt_recipe->execute();
-    $result_recipe = $stmt_recipe->get_result();
+    $result_recipe = $mysqli->query($sql_recipe);
+    if (!$result_recipe) {
+        throw new Exception('查詢食譜資料失敗：' . $mysqli->error, 500);
+    }
+    
     $recipe_data = $result_recipe->fetch_assoc();
-    $stmt_recipe->close();
+    $result_recipe->free();
 
     if (!$recipe_data) {
         throw new Exception('找不到指定的食譜', 404);
@@ -46,36 +50,35 @@ try {
 
     // ==========================================================
     // 【✅ 核心修正 ✅】
-    //  2. 補上查詢食材 (ingredients) 的邏輯
+    // 2. 查詢食材 (ingredients) 的邏輯 (已修改為 mysqli_query)
     // ==========================================================
-    $sql_ingredients = "SELECT name, serving AS amount FROM ingredient_item WHERE recipe_id = ?";
-    $stmt_ingredients = $mysqli->prepare($sql_ingredients);
-    $stmt_ingredients->bind_param("i", $recipe_id);
-    $stmt_ingredients->execute();
-    $result_ingredients = $stmt_ingredients->get_result();
-    // 使用 fetch_all 直接獲取所有結果，更簡潔
+    $sql_ingredients = "SELECT name, serving AS amount FROM ingredient_item WHERE recipe_id = {$safe_recipe_id}";
+    $result_ingredients = $mysqli->query($sql_ingredients);
+    if (!$result_ingredients) {
+        throw new Exception('查詢食材資料失敗：' . $mysqli->error, 500);
+    }
+    
     $ingredients_data = $result_ingredients->fetch_all(MYSQLI_ASSOC);
-    $stmt_ingredients->close();
+    $result_ingredients->free();
     
     // ==========================================================
     // 【✅ 核心修正 ✅】
-    //  3. 補上查詢步驟 (steps) 的邏輯
+    // 3. 查詢步驟 (steps) 的邏輯 (已修改為 mysqli_query)
     // ==========================================================
-    $sql_steps = "SELECT content FROM steps WHERE recipe_id = ? ORDER BY `order` ASC";
-    $stmt_steps = $mysqli->prepare($sql_steps);
-    $stmt_steps->bind_param("i", $recipe_id);
-    $stmt_steps->execute();
-    $result_steps = $stmt_steps->get_result();
-    // 使用 fetch_all 獲取所有步驟
+    $sql_steps = "SELECT content FROM steps WHERE recipe_id = {$safe_recipe_id} ORDER BY `order` ASC";
+    $result_steps = $mysqli->query($sql_steps);
+    if (!$result_steps) {
+        throw new Exception('查詢步驟資料失敗：' . $mysqli->error, 500);
+    }
+    
     $steps_raw_data = $result_steps->fetch_all(MYSQLI_ASSOC);
-    $stmt_steps->close();
+    $result_steps->free();
     
     // 將步驟陣列從 [{content: '...'}, ...] 轉換成 ['...', '...']
-    // 這一步是為了匹配您前端 RecipeEditPage.vue 的 watch 邏輯
     $steps_data = array_column($steps_raw_data, 'content');
 
     // ==========================================================
-    //  4. 組合最終的回傳資料
+    // 4. 組合最終的回傳資料
     // ==========================================================
     $response_data = [
         'recipe'      => $recipe_data,
