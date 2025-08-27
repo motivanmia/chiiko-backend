@@ -3,6 +3,7 @@
   require_once __DIR__ . '/../../common/cors.php';
   require_once __DIR__ . '/../../common/functions.php';
   require_once __DIR__ . '/../../common/ecpay.php';
+  require_once __DIR__ . '/../../common/linepay.php';
 
   require_method('POST');
 
@@ -36,11 +37,13 @@ if (
   send_json(['status' => 'fail', 'message' => '請填寫完整收件資訊'], 400);
 }
 
-// 轉換付款方式：card → 0, cash → 1
+// 轉換付款方式：card → 0, cash → 1, linepay → 1
 if ($payment_type_str === 'card') {
   $payment_type = 0;
 } elseif ($payment_type_str === 'cash') {
   $payment_type = 1;
+} elseif ($payment_type_str === 'linepay') {
+  $payment_type = 2;
 } else {
   send_json(['status' => 'fail', 'message' => '付款方式錯誤'], 400);
 }
@@ -70,18 +73,22 @@ if (empty($cart_items)) {
 
 // 計算金額
 $total_price = 0;
-$item_names = [];
+$item_details = [];
 foreach ($cart_items as $item) {
   $total_price += $item['unit_price'] * $item['quantity'];
-  $item_names[] = $item['name'];
+  $item_details[] = $item['name'] . " " . $item['unit_price'] . "x" . $item['quantity'];
 }
-
 
 // 運費判斷
 if ($total_price >= 1000) {
     $freight = 0;
 } else {
     $freight = ($payment_location === 0) ? 100 : 200;
+}
+
+// 如果有運費就加上去
+if ($freight > 0) {
+  $item_details[] = "運費 " . $freight . "x1";
 }
 
 $final_price = $total_price + $freight;
@@ -125,8 +132,8 @@ foreach ($cart_items as $item) {
 }
 
 // 清空購物車
-$sql_clear = "DELETE FROM carts WHERE user_id = {$user_id}";
-db_query($mysqli, $sql_clear);
+// $sql_clear = "DELETE FROM carts WHERE user_id = {$user_id}";
+// db_query($mysqli, $sql_clear);
 
 create_notification($mysqli, [
     'receiver_id' => $user_id,
@@ -137,10 +144,6 @@ create_notification($mysqli, [
   ]);
 
 if ($payment_type === 0) {
-  // $MerchantID = "3002607";
-  // $HashKey = "pwFHCqoQZGmho4w6";
-  // $HashIV = "EkRm7iFT261dpevs";
-  // $TradeNo = "ORD" . strtoupper(bin2hex(random_bytes(4))); // 20碼內
 
   $ecpay_params = [
     'MerchantID'        => MERCHANT_ID,
@@ -149,7 +152,7 @@ if ($payment_type === 0) {
     'PaymentType'       => 'aio',
     'TotalAmount'       => $final_price,
     'TradeDesc'         => '訂單測試',
-    'ItemName'          => implode('#', $item_names),
+    'ItemName'          => implode('#', $item_details),
     'ReturnURL'         => BASE_URL . '/front/order/ecpay_callback.php',
     'ChoosePayment'     => 'Credit',
     'ClientBackURL'     => FRONT_BASE_URL . '/order-success?order_id=' . $order_id,
@@ -171,6 +174,114 @@ if ($payment_type === 0) {
       'params' => $ecpay_params
     ]
   ]);
+}
+
+if ($payment_type === 2) {
+    $linePayChannelId = LINE_PAY_CHANNEL_ID;
+    $linePayChannelSecret = LINE_PAY_CHANNEL_SECRET;
+    $linePayApiUrl = "https://sandbox-api-pay.line.me/v3/payments/request";
+    $nonce = uniqid();
+
+    // 自己生成 linePay 專用的 order id
+    $linePayOrderId = $tracking_number;
+    // $linePayOrderId = "LP" . $order_id . time();
+
+    // 更新 DB：存下 LinePay 的暫時交易編號
+    $updateSql = "UPDATE orders SET tracking_number = '" . $mysqli->real_escape_string($linePayOrderId) . "' WHERE order_id = '$order_id'";
+    
+    db_query($mysqli, $updateSql);
+    // $updateSql = "UPDATE orders SET transaction_id = '" . $mysqli->real_escape_string($linePayOrderId) . "' WHERE order_id = {$order_id}";
+    // db_query($mysqli, $updateSql);
+
+    // 包裝商品
+    $linepay_products = [];
+    foreach ($cart_items as $item) {
+        $linepay_products[] = [
+            "id"       => (string)$item['product_id'],
+            "name"     => $item['name'],
+            "quantity" => (int)$item['quantity'],
+            "price"    => (int)$item['unit_price']
+        ];
+    }
+    if ($freight > 0) {
+      $linepay_products[] = [
+        "id" => "shipping-fee",
+        "name" => "運費",
+        "quantity" => 1,
+        "price" => (int)$freight
+      ];
+    }
+
+    $requestBody = [
+      "amount"   => (int)$final_price,
+      "currency" => "TWD",
+      "orderId"  => $linePayOrderId,
+      "packages" => [
+        [
+          "id"       => "PKG-" . $order_id,
+          "amount"   => (int)$final_price,
+          "products" => $linepay_products
+        ]
+      ],
+      "redirectUrls" => [
+          "confirmUrl" => BASE_URL . '/front/order/linepay_confirm.php' . "?orderId=" . $linePayOrderId,
+          // "cancelUrl"  => $_ENV['LINEPAY_CANCEL_URL'] . "?orderId=" . $linePayOrderId
+      ]
+    ];
+
+    $requestBodyJson  = json_encode($requestBody, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+    $signatureUrl     = "/v3/payments/request";
+    $signatureContent = $linePayChannelSecret . $signatureUrl . $requestBodyJson . $nonce;
+    $signature        = linepay_signature(LINE_PAY_CHANNEL_SECRET, "POST", $signatureUrl, $requestBodyJson, $nonce);
+    // $signature        = base64_encode(hash_hmac('sha256', $signatureContent, $linePayChannelSecret, true));
+
+    $headers = [
+      "Content-Type: application/json",
+      "X-LINE-ChannelId: " . $linePayChannelId,
+      "X-LINE-Authorization-Nonce: " . $nonce,
+      "X-LINE-Authorization: " . $signature,
+    ];
+
+    $ch = curl_init($linePayApiUrl);
+    curl_setopt($ch, CURLOPT_CUSTOMREQUEST, "POST");
+    curl_setopt($ch, CURLOPT_POSTFIELDS, $requestBodyJson);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+    $result   = curl_exec($ch);
+    $httpcode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    if (curl_errno($ch)) {
+      $error_msg = curl_error($ch);
+      curl_close($ch);
+      http_response_code(500);
+      echo json_encode([
+          "error" => "cURL 請求失敗",
+          "message" => "網路連線錯誤：" . $error_msg
+      ]);
+      exit();
+    }
+    curl_close($ch);
+
+    $linePayResponse = json_decode($result, true);
+
+    if ($httpcode === 200 && isset($linePayResponse['returnCode']) && $linePayResponse['returnCode'] === '0000') {
+      send_json([
+        'status'  => 'success',
+        'message' => '訂單建立成功，準備跳轉至 Line Pay',
+        'data'    => [
+          'order_id' => $order_id,
+          'tracking_number' => $tracking_number,
+          'final_price' => $final_price,
+          'freight' => $freight,
+          'redirect_url' => $linePayResponse['info']['paymentUrl']['web']
+        ]
+      ]);
+    } else {
+      send_json([
+        'status'  => 'fail',
+        'message' => $linePayResponse['returnMessage'] ?? 'Line Pay 建立交易失敗',
+        'raw'     => $linePayResponse
+      ], 500);
+    }
 }
 
 // 回傳成功

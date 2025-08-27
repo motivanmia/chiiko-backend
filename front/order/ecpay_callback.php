@@ -31,13 +31,34 @@
 
   if ($RtnCode === 1) {
       // 付款成功，更新訂單
-    $sql = "
-      UPDATE orders 
-      SET payment_status = 1
-      WHERE tracking_number = '{$MerchantTradeNo}'
-      LIMIT 1
-    ";
-    $mysqli->query($sql);
+    $sql = "SELECT user_id FROM orders WHERE tracking_number = '{$MerchantTradeNo}' LIMIT 1";
+    $result = $mysqli->query($sql);
+
+    if ($result && $result->num_rows > 0) {
+        $row = $result->fetch_assoc();
+        $user_id = $row['user_id'];
+
+        // 更新訂單狀態
+        $updateSql = "
+            UPDATE orders
+            SET payment_status = 1
+            WHERE tracking_number = '{$MerchantTradeNo}'
+            LIMIT 1
+        ";
+        $mysqli->query($updateSql);
+
+        // 清空購物車
+        $clearSql = "DELETE FROM carts WHERE user_id = {$user_id}";
+        $mysqli->query($clearSql);
+    }
+
+    // $updateSql  = "
+    //   UPDATE orders 
+    //   SET payment_status = 1
+    //   WHERE tracking_number = '{$MerchantTradeNo}'
+    //   LIMIT 1
+    // ";
+    // $mysqli->query($updateSql);
   }
 
   // ----------------------
