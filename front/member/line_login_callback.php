@@ -112,6 +112,12 @@ try {
         ";
         $mysqli->query($sql_insert);
 
+        //錯誤檢查
+        if ($mysqli->error) {
+            throw new Exception("資料庫插入失敗，錯誤：" . $mysqli->error);
+        }
+
+
         if ($mysqli->affected_rows > 0) {
             $is_new_user = true;
             $user_record = [
@@ -151,6 +157,5 @@ try {
     ]);
 }
 
-echo json_encode(['received_redirect_uri' => $redirect_uri]);
 
 ?>
