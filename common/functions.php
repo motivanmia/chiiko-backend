@@ -295,7 +295,7 @@
   }
 
   /**
-   *食譜狀態 0->1 上架(type=10) / 0->4 退回(type=11)
+   *食譜狀態 0->1 上架(type=10) / 0->3 退回(type=11)
    */
   function notify_recipe_on_status_change(mysqli $db, int $old, int $new, int $recipe_id, int $author_id, string $recipe_name): void {
     if ($old === 0 && $new === 1) {
@@ -306,7 +306,7 @@
         'title'       => '食譜已上架',
         'content'     => "你的食譜《{$recipe_name}》已通過並上架！",
       ]);
-    } elseif ($old === 0 && $new === 4) {
+    } elseif ($old === 0 && $new === 3) {
       create_notification($db, [
         'receiver_id' => $author_id,
         'recipe_id'   => $recipe_id,
