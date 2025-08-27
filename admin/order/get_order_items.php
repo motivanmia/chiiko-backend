@@ -24,7 +24,7 @@
 
   // 先取得訂單資訊
   $sql_order = sprintf(
-    "SELECT order_id, user_id, created_at, final_price, recipient, recipient_phone, shopping_address, order_status, freight
+    "SELECT order_id, user_id, created_at, final_price, recipient, recipient_phone, shopping_address, order_status, freight, tracking_number
     FROM orders
     WHERE order_id = %d",
     $order_id
@@ -82,6 +82,7 @@
       'recipient'        => $order['recipient'],
       'recipient_phone'  => $order['recipient_phone'],
       'shopping_address' => $order['shopping_address'],
+      'tracking_number'  => $order['tracking_number'],
       'items'            => $items
     ]
   ]);
