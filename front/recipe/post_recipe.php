@@ -29,6 +29,7 @@ try {
     $cooked_time = $data['cooked_time'] ?? null;
     $tag = $data['tag'] ?? null;
     $steps = $data['steps'] ?? [];
+    $views = $data['views'] ?? 0;
     $ingredients = $data['ingredients'] ?? [];
 
     if ($status_code == 0 || $status_code == 1) {
@@ -50,7 +51,7 @@ try {
 
     // 1. 儲存食譜主資料到 `recipe` 資料表
     $sql = "INSERT INTO `recipe`
-                (`user_id`, `manager_id`, `recipe_category_id`, `name`, `content`, `serving`, `image`, `cooked_time`, `status`, `tag`, `created_at`)
+                (`user_id`, `manager_id`, `recipe_category_id`, `name`, `content`, `serving`, `image`, `cooked_time`, `status`, `tag`, `views`, `created_at`)
             VALUES (
                 " . get_sql_value($user_id, $mysqli) . ",
                 " . get_sql_value($manager_id, $mysqli) . ",
@@ -62,6 +63,8 @@ try {
                 " . get_sql_value($cooked_time, $mysqli) . ",
                 " . get_sql_value($status_code, $mysqli) . ",
                 " . get_sql_value($tag, $mysqli) . ",
+                " . get_sql_value($views, $mysqli) . ",
+                
                 NOW()
             )";
     $result = $mysqli->query($sql);
