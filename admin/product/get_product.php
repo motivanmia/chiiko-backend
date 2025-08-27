@@ -6,7 +6,15 @@
 
   require_method('GET');
   
-  $sql = "SELECT * FROM products";
+  // SQL 查詢
+  $sql = "SELECT
+    p.*,
+    pc.name AS category_name
+  FROM products AS p
+  INNER JOIN
+    product_categories AS pc
+  ON p.product_category_id = pc.product_category_id
+  ORDER BY p.product_id ";
 
   // 取得資料
   $result = db_query($mysqli, $sql);
