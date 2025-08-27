@@ -20,11 +20,6 @@ $input = json_decode(file_get_contents('php://input'), true);
 $code = $input['code'] ?? '';
 $redirect_uri = $input['redirect_uri'] ?? '';
 
-echo json_encode([
-    'message' => '除錯模式：後端收到的 redirect_uri',
-    'received_redirect_uri' => $redirect_uri
-]);
-exit; // 確保程式碼不會繼續執行後面的 cURL 請求
 
 
 
