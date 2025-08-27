@@ -4,8 +4,8 @@ require_once __DIR__ . '/../../common/config.php';
 require_once __DIR__ . '/../../common/conn.php';
 require_once __DIR__ . '/../../common/functions.php';
 
-/** 建議：上線除錯時暫時開啟（完成後可移除） */
-// mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
+
+mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
 
 
 
@@ -150,10 +150,11 @@ try {
   ], 200);
 
 } catch (Throwable $e) {
-  if (isset($mysqli)) { @ $mysqli->rollback(); }
-  $code = $e->getCode() ?: 500;
-  $code = ($code >= 400 && $code < 600) ? $code : 500;
-  send_json(['status' => 'fail', 'message' => $e->getMessage()], $code);
-} finally {
+  // 取代 $mysqli->rollback();
+  safe_mysqli_rollback($mysqli);
+
+  // 錯誤回傳...
+  send_json(['status'=>'fail','message'=>$e->getMessage()], 500);
+}finally {
   if (isset($mysqli)) $mysqli->close();
 }

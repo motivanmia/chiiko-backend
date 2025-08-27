@@ -331,4 +331,38 @@
       'content'     => $preview,
     ]);
   }
+
+
+  function mysqli_drain_all_results(mysqli $db): void {
+  // 先處理針對上一個 stmt/use_result 的殘留
+  // 如果還有未讀取的結果（多語句/存儲過程）
+  while ($db->more_results()) {
+    // next_result() 會移到下一個結果集
+    if ($db->next_result()) {
+      // 用 use_result() 取到結果並釋放
+      if ($res = $db->use_result()) {
+        $res->free();
+      }
+    } else {
+      // 若 next_result() 失敗，直接跳出避免死循環
+      break;
+    }
+  }
+}
+
+/**
+ * 比較安全的 rollback：先清殘留結果再 rollback
+ */
+function safe_mysqli_rollback(mysqli $db): void {
+  // 清光殘留結果，避免 out-of-sync
+  mysqli_drain_all_results($db);
+  // 真的回滾
+  if ($db->errno === 0) {
+    // 就算沒 begin_transaction()，呼叫 rollback() 也不會壞事，但保險一點可判斷
+    $db->rollback();
+  } else {
+    // 有時候 errno 不是 0 也能 rollback；這裡保守處理
+    $db->rollback();
+  }
+}
 ?>
