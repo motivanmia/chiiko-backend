@@ -38,6 +38,28 @@ try {
         throw new Exception('無效的狀態碼。', 400);
     }
 
+    $old_status  = null;
+    $author_id   = null;
+    $recipe_name = null;
+
+    $sqlSel = "SELECT status AS old_status, user_id AS author_id, name AS recipe_name
+               FROM recipe
+               WHERE recipe_id = ?
+               LIMIT 1";
+    $stmtSel = $mysqli->prepare($sqlSel);
+    if (!$stmtSel) {
+        throw new Exception("SQL 預處理失敗: " . $mysqli->error, 500);
+    }
+    $stmtSel->bind_param("i", $recipe_id);
+    $stmtSel->execute();
+    $stmtSel->bind_result($old_status, $author_id, $recipe_name);
+    $found = $stmtSel->fetch();
+    $stmtSel->close();
+
+    if (!$found) {
+        throw new Exception('找不到該食譜。', 404);
+    }
+
     // --- 執行資料庫更新 ---
     $sql = "UPDATE recipe SET status = ? WHERE recipe_id = ?";
     $stmt = $mysqli->prepare($sql);
@@ -52,6 +74,17 @@ try {
     }
     
     $stmt->close();
+
+    if ($old_status !== null && (int)$old_status !== (int)$new_status) {
+        notify_recipe_on_status_change(
+            $mysqli,
+            (int)$old_status,
+            (int)$new_status,
+            (int)$recipe_id,
+            (int)$author_id,
+            (string)$recipe_name
+        );
+    }
     
     // ✅ 【核心修正 2】: 在發送成功 JSON 之前，清空緩衝區
     // 這會丟棄掉所有在這之前可能產生的意外輸出 (空格, BOM, PHP 警告等)
