@@ -26,6 +26,7 @@ p.product_category_id = pc.product_category_id;";
   $data = $result->fetch_all(MYSQLI_ASSOC);
   $jsonData = json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
 
+  
 
   send_json([
     'status' => 'success',
