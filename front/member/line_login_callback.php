@@ -20,6 +20,9 @@ $input = json_decode(file_get_contents('php://input'), true);
 $code = $input['code'] ?? '';
 $redirect_uri = $input['redirect_uri'] ?? '';
 
+error_log("Received redirect_uri: " . $redirect_uri);
+
+
 // 檢查是否收到授權碼
 if (empty($code)) {
     http_response_code(400);
