@@ -7,7 +7,7 @@ header('Content-Type: application/json');
 global $mysqli;
 
 try {
-    $sql = "SELECT recipe_id, name FROM recipe ORDER BY views DESC LIMIT 4";
+    $sql = "SELECT recipe_id, name FROM recipe WHERE status=1 ORDER BY views DESC LIMIT 4";
     
     $result = $mysqli->query($sql);
 
