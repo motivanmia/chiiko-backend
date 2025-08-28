@@ -118,6 +118,11 @@ try {
     $recipes = [];
     if ($result_recipes->num_rows > 0) {
         while ($row = $result_recipes->fetch_assoc()) {
+            // 這裡新增處理，移除 tag 字串開頭的 '#'
+            if (!empty($row['tag'])) {
+                $row['tag'] = ltrim($row['tag'], '#');
+            }
+
             if (!empty($row['image'])) {
                 $row['image'] = IMG_BASE_URL . '/' . $row['image'];
             }
@@ -125,13 +130,12 @@ try {
         }
     }
     
-    // 調試：記錄查詢結果數量
     $debugInfo['query_result_count'] = $result_recipes->num_rows;
 
     echo json_encode([
         'success' => true, 
         'data' => $recipes,
-        'debug_info' => $debugInfo  // 在生產環境中移除這行
+        'debug_info' => $debugInfo
     ]);
 
 } catch (mysqli_sql_exception $e) {
