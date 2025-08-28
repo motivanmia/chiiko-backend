@@ -93,30 +93,78 @@ try {
     }
 
     // 3. 儲存食材到 `ingredient_item` 資料表
-    if (!empty($ingredients)) {
-        foreach ($ingredients as $item) {
-            $user_ingredient_name = trim($item['name'] ?? null);
-            $amount = $item['amount'] ?? null;
-            
-            if (empty($user_ingredient_name)) {
-                continue;
-            }
-            
-            $clean_name = get_sql_value($user_ingredient_name, $mysqli);
-            $clean_amount = get_sql_value($amount, $mysqli);
+   if (!empty($ingredients)) {
+    // 區域正規化：折疊全形/半形空白為單一半形空白
+    $norm = function (string $s): string {
+        $s = trim($s);
+        return preg_replace('/[\x{3000}\s]+/u', ' ', $s);
+    };
 
-            $ingredient_item_sql = "INSERT INTO `ingredient_item` (`ingredient_id`, `recipe_id`, `name`, `serving`) VALUES (
-                NULL,
-                '{$new_recipe_id}',
-                {$clean_name},
-                {$clean_amount}
-            )";
-            
-            if (!$mysqli->query($ingredient_item_sql)) {
-                throw new Exception("新增食材項目失敗: " . $mysqli->error, 500);
+    foreach ($ingredients as $item) {
+        $rawName = isset($item['name']) ? (string)$item['name'] : '';
+        $name = $norm($rawName);
+        $amount = isset($item['amount']) ? trim((string)$item['amount']) : '';
+
+        // 名稱或數量為空就跳過
+        if ($name === '' || $amount === '') continue;
+
+        $ingredient_id = null;
+
+        // 先做精準比對（不分大小寫）
+        $esc = $mysqli->real_escape_string($name);
+        $sql1 = "
+            SELECT ingredient_id
+            FROM ingredients
+            WHERE LOWER(name) = LOWER('{$esc}')
+            LIMIT 1
+        ";
+        $res1 = $mysqli->query($sql1);
+        if ($res1 === false) {
+            throw new Exception('精準查詢失敗：' . $mysqli->error, 500);
+        }
+        if ($row = $res1->fetch_assoc()) {
+            $ingredient_id = (int)$row['ingredient_id'];
+        }
+        $res1->free();
+
+        // 若沒找到再用模糊比對，並用智慧排序挑最接近的一筆
+        if ($ingredient_id === null) {
+            $sql2 = "
+                SELECT ingredient_id, name
+                FROM ingredients
+                WHERE name LIKE '%{$esc}%'
+                ORDER BY
+                  CASE WHEN INSTR(name, '{$esc}') > 0 THEN 0 ELSE 1 END,
+                  ABS(CHAR_LENGTH(name) - CHAR_LENGTH('{$esc}')) ASC,
+                  CASE WHEN INSTR('{$esc}', name) > 0 THEN 0 ELSE 1 END,
+                  INSTR(name, '{$esc}') ASC,
+                  name ASC
+                LIMIT 1
+            ";
+            $res2 = $mysqli->query($sql2);
+            if ($res2 === false) {
+                throw new Exception('模糊查詢失敗：' . $mysqli->error, 500);
             }
+            if ($row2 = $res2->fetch_assoc()) {
+                $ingredient_id = (int)$row2['ingredient_id'];
+            }
+            $res2->free();
+        }
+
+        // 寫入 ingredient_item（ingredient_id 可能為 NULL）
+        $ingId = $ingredient_id === null ? 'NULL' : (int)$ingredient_id;
+        $safeName = $mysqli->real_escape_string($rawName); // 保留使用者原輸入名稱
+        $safeAmount = $mysqli->real_escape_string($amount);
+
+        $sql_ins = "
+            INSERT INTO ingredient_item (recipe_id, ingredient_id, name, serving)
+            VALUES ({$new_recipe_id}, {$ingId}, '{$safeName}', '{$safeAmount}')
+        ";
+        if (!$mysqli->query($sql_ins)) {
+            throw new Exception('新增食材項目失敗：' . $mysqli->error, 500);
         }
     }
+}
 
     // --- 提交交易，如果所有步驟都成功 ---
     $mysqli->commit();
