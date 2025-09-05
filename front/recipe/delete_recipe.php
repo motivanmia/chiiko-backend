@@ -28,6 +28,7 @@ if ($method === 'POST') {
         // 【修正 2】使用資料庫交易，確保資料一致性
         $mysqli->begin_transaction();
 
+        $stmt0 = $mysqli->prepare("DELETE FROM `notification` WHERE `recipe_id` = ?");
         $stmt0->bind_param("i", $recipe_id);
         $stmt0->execute();
         $stmt0->close();
