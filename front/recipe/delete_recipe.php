@@ -28,6 +28,10 @@ if ($method === 'POST') {
         // 【修正 2】使用資料庫交易，確保資料一致性
         $mysqli->begin_transaction();
 
+        $stmt0->bind_param("i", $recipe_id);
+        $stmt0->execute();
+        $stmt0->close();
+
         // 1. 刪除相關的食材項目 (ingredient_item)
         // 【修正 3】使用預備敘述防止 SQL 注入
         $stmt1 = $mysqli->prepare("DELETE FROM `ingredient_item` WHERE `recipe_id` = ?");
